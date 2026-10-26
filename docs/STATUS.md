@@ -3,58 +3,33 @@
 > Edit rules: the AI rewrites **Now** whenever the next step changes. The **Checklist** is tick-only: change `[ ]` to `[x]` and append `· date · commit · note link`. Never reword, reorder or delete items without asking.
 
 ## Now
-- **Current:** M4 Phase 1 release. Not started; no plan yet.
-  - **§7's "Done when":** README (§8), the §4.6 demo, tag `v0.1.0`, gitleaks clean.
-  - **The user** creates the GitHub repo and pushes, at that moment, after their go-ahead.
-  - **The AI** proposes the README link for product-catalog: a proposal only, never an edit there.
-  - **After M4:** the end of Phase 1, so `close-milestone` step 10 proposes cuts to `AGENTS.md`.
-- **Last session:** 2026-10-26. Closed M0–M3 ([M3 note](milestones/2026-10-26-M3-write-tools.md)).
-  - **M3 added three write tools,** `create_product`, `set_price` and `set_stock`, behind `CATALOG_ACCESS=read|write`. [ADR-0006](adr/0006-write-tools.md) is accepted.
-    - **The set tools:** `expectedVersion` and `dryRun` are required; every call reads the product first; a no-op writes nothing; the cancel signal is checked before any `PATCH`.
-    - **`create_product`** is never retried, and has its own outcome-unknown hint.
-  - **Tests:** 326 unit tests (MCP-level in both eras) and 61 integration tests (about 105 s).
-  - **Checked live** in Inspector and in Claude Code (dry run, apply, a planted `STALE_VERSION`).
+- **Current:** Phase 1 closed in the repo (M4, [note](milestones/2026-10-26-M4-phase-1-release.md)). **Nothing is pushed yet. The release steps, done by the AI at the user's go-ahead on 2026-10-26:**
+  1. create `AbanobNageh/catalog-agent` (public) with the description and topics in the M4 note's follow-ups
+  2. push `main`
+  3. check CI green; record the `integration` job's run time (it now seeds the stack first), and decide whether it stays on every pull request (§6)
+  4. tag `v0.1.0` and push the tag
+  - **Then the AI:**
+    - runs gitleaks again if anything new was committed
+    - proposes the product-catalog README link (text only)
+    - the `AGENTS.md` cuts for the end of Phase 1 are proposed at the close; the user approves each
+- **Phase 2 (M5–M8)** starts only after Phase 1 is published and the user says go (§5). M5 is the agent loop: OpenRouter `ChatModel`, `FakeChatModel`, the loop, the approval gate, limits, traces, the CLI, unit tests. **Check first:** OpenRouter's API and model prices, the SDK client version. One approved smoke call per milestone at most.
+- **Last session:** 2026-10-26. Closed M0–M4.
+  - **M4:** the README (a landing page), `docs/how-it-works.md`, the §4.6 demo (`docs/demo/`: the user's GIF and a transcript), MIT `LICENSE`, version 0.1.0, `.gitleaks.toml`, the CI seed step, and six approved `REQUIREMENTS.md` edits.
+  - **Tests:** 327 unit, 61 integration (105 s).
 - **Running:**
-  - the `catalog-agent` Compose stack on :3100, seeded
-  - **the user's `.env` now has the write key and `CATALOG_ACCESS=write`** (set during the M3 demo). `.env.example` still has read/read
-  - demo products `IT-DEMO-M3-1..3` (category `it-demo-m3`: Demo-Notebook, now at stock 50; Demo-Pencil-Case at 0; Demo-Planner at 8). Reuse them for M4's demo, then delete them with the admin key
-- **Next step: start M4,** following the milestone flow in `AGENTS.md`.
-  1. **Check the official docs first:**
-     - gitleaks: the current release, and how to install it on Windows (for example `go install github.com/zricethezav/gitleaks/v8@<version>`, since Go 1.26 is installed, or winget/scoop)
-     - the GitHub Actions versions in `.github/workflows/ci.yml`
-     - `npm view @modelcontextprotocol/server versions` (2.4.0 at M3) and the MCP spec's revision
-     - the MIT licence text
-  2. **Read first:**
-     - `REQUIREMENTS.md` §8 (the README rules: a recruiter part first, who did what, the AI's mistakes) and §4.6 (the demo)
-     - the M0–M3 notes (`docs/milestones/*-M?-*.md`, their "Review findings" and "the AI's own mistakes") and the experiment log in `docs/ai-workflow.md`: the README's log of the AI's mistakes is built from them
-     - `docs/adr/` 0001–0006, for the README's design section
-  3. **Likely decisions to ask the user:**
-     - **The demo format:** a transcript or a GIF (§4.6), and who records it (the user, in Claude Code).
-     - **The demo's products:** §4.6 says "finds low-stock books", which are `SEED-*` products. The tests never write `SEED-*`, but would the demo restock one, or use `it-demo-*` products? A restock writes the shared seed data.
-     - **The version bump:** `0.1.0` in `package.json` and `SERVER_INFO` (`src/mcp/server.ts`).
-     - **The README's length and structure.** The production section covers:
-       - Streamable HTTP with OAuth 2.1 (read the 2026-07-28 authorization section first)
-       - idempotency keys or a lookup by SKU for create
-       - catalog-api's cache caveat (ADR-0006)
-       - an error schema once the spec has one (SEP-2145)
-     - **The `REQUIREMENTS.md` updates** listed below, for the user to approve.
-  4. **Write the plan** (`docs/milestones/<date>-M4-plan.md`) with a Review Focus. Build, then the fresh reviewer (give it the uncommitted diff and the plan; **mutate only a temp copy, with absolute paths**; **skip `pause.int.test.ts` while a demo is live**). Then `close-milestone`: gitleaks over all history, then stop. Creating the repo, pushing and tagging are the user's.
-- **Carried into M4:**
-  - **CI green on GitHub** at the first push. Check the `integration` job's run time, now about 105 s of tests plus the stack build; its stdio and `.env` tests build `dist/` and use a `node_modules` junction or symlink.
-  - **gitleaks** over all history, and the MIT `LICENSE`. Check that no `.env`, key or trace file was ever committed.
-  - **The README:**
-    - who did what, and the AI's mistakes (from the milestone notes)
-    - §4.6's demo transcript: capture whether Claude Code asks for approval before each write tool, and the model's wording after `STALE_VERSION`
-    - the `.env` step before Claude Code, **as the first numbered step** (M2 and M3 both tripped on it)
-    - "two layers" of least privilege (`CATALOG_ACCESS` and the key's scope), and why delete and reindex are never exposed
-    - a set call's worst case: about 11 × `CATALOG_TIMEOUT_MS`, 57 s at the default
-    - "what I'd change in production" (see above)
-  - **Delete the demo products** after the demo.
-- **Carried into M5:** the per-call timeout must allow about 11 × `CATALOG_TIMEOUT_MS` for a set call.
+  - the `catalog-agent` Compose stack on :3100, seeded: exactly the 10,000 seed products. The demo left `SEED-04007` at stock 40 and `SEED-04575` at 25
+  - **the user's `.env`** has the write key and `CATALOG_ACCESS=write`; `.env.example` has read/read
+  - gitleaks 8.30.1 (winget): `gitleaks git --redact .` and `gitleaks dir --redact .`
+  - `D:\Projects\catalog-demo` (outside the repo): the demo's MCP config and the raw `/export`. The user can delete it
+- **Carried into M5:**
+  - the per-call timeout must allow about 11 × `CATALOG_TIMEOUT_MS` plus 2 s for a set call
+  - our loop decides what the model sees from a result. Claude Code forwards only `structuredContent` on a success, and the text on an error
 - **Carried into M6:**
   - log the calls the SDK rejects before our handler (schema errors, unknown tools); today they get no `tool call` line
   - consider a bound on a set call's total time
-- **Later:** a sweep command for `it-*` products left by a killed integration run.
+- **Later:**
+  - a sweep command for `it-*` products left by a killed integration run
+  - optionally, a gitleaks job in CI
 - **Facts worth remembering:**
   - **catalog-api:**
     - a write takes about 1 s, a read a few ms
@@ -65,6 +40,7 @@
     - the create DTO has no maximum string lengths
     - filters are case-sensitive; `relevance` without `q` is `newest`; `q` searches `name^3` and `description` only, never `sku`
     - facets are the top 20 categories and the top 50 brands
+    - the seed skips existing SKUs, so re-seeding never resets a changed row
   - **The SDK:**
     - it drops in-flight requests when stdin reaches end-of-file
     - `StdioClientTransport` tolerates junk on stdout (only the raw-pipe test catches it)
@@ -72,16 +48,12 @@
     - the handler's `ctx.mcpReq.signal` aborts on cancellation, in both eras
     - the client's default request timeout is 60 s
   - **Inspector:** it validates `structuredContent` even on `isError`. Its CLI uses the SDK client's 60 s default timeout.
-  - **Claude Code** starts project servers in the repo folder, and reads `.env` only when the server starts: reconnect with `/mcp` after editing it.
+  - **Claude Code** (v2.1.310):
+    - it starts project servers in the repo folder, and reads `.env` only when the server starts: reconnect with `/mcp` after editing it
+    - in manual mode it asks before every MCP tool call, read-only tools and dry runs included
+    - `--mcp-config <file> --strict-mcp-config` runs a session outside the repo with only that server
+    - `/export` folds tool calls; the session log in `~/.claude/projects/` has them in full
   - **Tests:** keep test client timeouts well clear of 1 s.
-- **Outdated in `REQUIREMENTS.md`** (to propose to the user):
-  - **the MCP spec** is revision 2026-07-28, and the SDK is v2 (ADR-0002)
-  - **§3.2:** list items carry `version`
-  - **§4.2:**
-    - "a short text summary" is now a summary plus the JSON (ADR-0005)
-    - it doesn't say `dryRun` is required (ADR-0006)
-  - **§4.3:** error results are text only, and the SDK's schema rejections are plain text (ADR-0005)
-  - **§4.4:** the create hint "search for the sku" can't be followed; see ADR-0006 for the wording used
 - **Session gotchas:**
   - commit with `git commit -F <file>`, and stage explicit paths only
   - edit files with the Edit/Write tools only: no heredocs, no inline Python, no .NET `WriteAllText`, no `Set-Content`
@@ -89,6 +61,7 @@
   - **`npm run format` re-wraps lines,** so re-read a file before an Edit after formatting
   - if `npm run test:int` says "The build failed", fix the tsc errors it printed
   - never import from a `*.test.ts` file into another test file: Vitest would run its tests there too
+  - in PowerShell strings, write `${id}:` rather than `$id:`
 - **Open questions / blockers:** none.
 
 ## Checklist
@@ -97,7 +70,7 @@
 - [x] M1 Catalog client · 2026-10-26 · d1055ae..15bbe9f · [note](milestones/2026-10-26-M1-catalog-client.md)
 - [x] M2 MCP server, read tools · 2026-10-26 · d2a2a68..63b32eb · [note](milestones/2026-10-26-M2-mcp-read-tools.md)
 - [x] M3 Write tools · 2026-10-26 · f12f571..3b83da6 · [note](milestones/2026-10-26-M3-write-tools.md)
-- [ ] M4 Phase 1 release
+- [x] M4 Phase 1 release · 2026-10-26 · 2a0d6a3..6b1d6c9 · [note](milestones/2026-10-26-M4-phase-1-release.md)
 
 ### Phase 2: the agent loop (§5; starts only after Phase 1 is published and the user says go)
 - [ ] M5 Agent loop
