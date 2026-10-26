@@ -15,7 +15,7 @@ The MCP server is an ordinary HTTP client of catalog-api **`v1.1.0`**, built fro
 
 ## Setup
 - Host: Windows 11, Docker Desktop (WSL2, 16 GB to Docker). Give **PowerShell 5.1** commands.
-- Installed: Node 24.21, npm 11.19, Docker 29.8 with Compose 5.6, gh 2.93, Go 1.26. Not installed yet: gitleaks (needed at M4).
+- Installed: Node 24.21, npm 11.19, Docker 29.8 with Compose 5.6, gh 2.93, Go 1.26, gitleaks 8.30.1 (winget).
 - **Memory:** product-catalog's Compose stack, its kind clusters (dev and staging, about 7 GiB together) and this repo's stack don't all fit. Check `docker ps` before starting this stack, and ask before stopping anything of product-catalog's.
 
 ## Commands
@@ -23,18 +23,17 @@ Run from the repo root. Test every command before it goes here.
 
 Node (ADR-0002: TypeScript 7, Vitest 5, oxlint, Prettier; exact pins via `.npmrc`):
 - Install: `npm ci`. Add a package: `npm i <pkg>@<exact version>` (`save-exact` is on; the version comes from the milestone's ADR)
-- Local env: `Copy-Item .env.example .env` (git-ignored; the read key and `CATALOG_ACCESS=read` by default). For the write tools (`create_product`, `set_price`, `set_stock`), change both lines in `.env`: `CATALOG_ACCESS=write` and the write key. Unset, `CATALOG_ACCESS` means `write` (ADR-0006); with the read key, every write then gets catalog-api's 403
+- Local env: `Copy-Item .env.example .env` (git-ignored; the read key and `CATALOG_ACCESS=read` by default). For the write tools (`create_product`, `set_price`, `set_stock`), change both lines in `.env`: `CATALOG_ACCESS=write` and the write key
 - Unit tests: `npm test` (Vitest project `unit`: `src/**/*.test.ts`, no stack needed)
 - Integration tests: `npm run test:int` (project `int`: `src/**/*.int.test.ts`, one file at a time, about 100 s). Needs the Compose stack up. Each file creates its own products in category `it-<runid>-<suite>` and deletes them with the admin key; nothing touches `SEED-*`. `pause.int.test.ts` pauses search-service for a few seconds; if a run is killed mid-test, undo it with `docker compose unpause search-service`. search-service shows `unhealthy` for a few seconds after a pause, then recovers
 - A normal write takes about 1 s (search-service indexes with `refresh=wait_for`), a read a few ms. Keep test client timeouts well clear of 1 s
 - Typecheck / lint / format: `npm run typecheck` / `npm run lint` (type-aware; fails on `console.log`/`info`/`debug` in `src/`) / `npm run format:check` (`npm run format` fixes; `*.md` is formatted by hand)
 - Build to `dist/`: `npm run build`
-- Run the MCP server over stdio: `npm run build`, then `npm start` (`node dist/main.js`). It loads the repo root's `.env` itself, wherever it's started from; variables already set win. It waits for JSON-RPC on stdin and logs JSON to stderr. With stdin piped from a file, the server drops requests still in flight at end-of-file, so the answers never arrive
+- Run the MCP server over stdio: `npm run build`, then `npm start` (`node dist/main.js`). It loads the repo root's `.env` itself, wherever it's started from; variables already set win. It waits for JSON-RPC on stdin and logs JSON to stderr
 - Claude Code: `.mcp.json` registers the server as `catalog` (`node dist/main.js`). **Run `npm run build` first**; Claude Code asks once to approve a project server
 - MCP Inspector, CLI mode, through `.mcp.json`: `npx -y @modelcontextprotocol/inspector@2.12.0 --cli --config .mcp.json --server catalog --method tools/list --strict`. A call: `... --method tools/call --tool-name search_products --tool-arg category=books maxStock=5 sort=stock_asc`. Extra variables: `-e CATALOG_API_KEY=...`. It exits 5 when a tool returns an error result. Leave out `--cli` for the web UI
-- The int project's global setup runs the build, because `stdio.int.test.ts`, `tools.int.test.ts` and `writes.int.test.ts` spawn `dist/main.js`. `contract.int.test.ts` compares the tools' schemas with the live `/docs-json`
 - Secret scan, before every publish (gitleaks 8.30.1, `winget install --id Gitleaks.Gitleaks --version 8.30.1 --exact`; open a new shell after installing so `gitleaks` is on `PATH`): `gitleaks git --redact .` (the whole history) and `gitleaks dir --redact .` (the working tree, git-ignored files skipped). Both must say "no leaks found". `.gitleaks.toml` adds the default rules plus an allowlist for exactly the three public dev keys; any other key is still reported
-- CI (`.github/workflows/ci.yml`): job `check` runs `npm ci`, lint, typecheck, format check, unit tests and build; job `integration` builds the Compose stack from `v1.1.0` and runs `npm run test:int`. Until the repo is on GitHub (M4), run those locally
+- CI (`.github/workflows/ci.yml`): job `check` runs `npm ci`, lint, typecheck, format check, unit tests and build; job `integration` builds the Compose stack from `v1.1.0`, seeds it, and runs `npm run test:int`. Both run on every push to `main`, every `v*` tag and every pull request; on GitHub, `check` takes about 15 s and `integration` about 4 minutes
 
 The catalogue stack (`docker-compose.yml`, project `catalog-agent`, catalog-api `v1.1.0` built from product-catalog's git tag; ADR-0003):
 - First start, or after changing the tag: `docker compose up --build -d --wait`. It clones the tag (needs the network) and takes about 3 minutes, plus the 1.2 GB OpenSearch image if it isn't pulled yet

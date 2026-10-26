@@ -3,16 +3,16 @@
 > Edit rules: the AI rewrites **Now** whenever the next step changes. The **Checklist** is tick-only: change `[ ]` to `[x]` and append `· date · commit · note link`. Never reword, reorder or delete items without asking.
 
 ## Now
-- **Current:** Phase 1 closed in the repo (M4, [note](milestones/2026-10-26-M4-phase-1-release.md)). **Nothing is pushed yet. The release steps, done by the AI at the user's go-ahead on 2026-10-26:**
-  1. create `AbanobNageh/catalog-agent` (public) with the description and topics in the M4 note's follow-ups
-  2. push `main`
-  3. check CI green; record the `integration` job's run time (it now seeds the stack first), and decide whether it stays on every pull request (§6)
-  4. tag `v0.1.0` and push the tag
-  - **Then the AI:**
-    - runs gitleaks again if anything new was committed
-    - proposes the product-catalog README link (text only)
-    - the `AGENTS.md` cuts for the end of Phase 1 are proposed at the close; the user approves each
-- **Phase 2 (M5–M8)** starts only after Phase 1 is published and the user says go (§5). M5 is the agent loop: OpenRouter `ChatModel`, `FakeChatModel`, the loop, the approval gate, limits, traces, the CLI, unit tests. **Check first:** OpenRouter's API and model prices, the SDK client version. One approved smoke call per milestone at most.
+- **Current:** **Phase 1 is published** (M4, [note](milestones/2026-10-26-M4-phase-1-release.md)).
+  - **Done by the AI at the user's go-ahead (2026-10-26):**
+    - created https://github.com/AbanobNageh/catalog-agent (public, with the description and topics), and pushed `main`
+    - CI was green on the first push: `check` 15 s, `integration` 3 min 41 s (stack build 1:36, seed 0:11, tests 1:45)
+    - tagged and pushed `v0.1.0`, an annotated tag on `74b4f9b`
+  - **The user's choices:**
+    - `integration` stays on every pull request (§6)
+    - the five `AGENTS.md` changes for the end of Phase 1 are applied
+    - the AI edited product-catalog's README line 18, linking this repo
+- **Phase 2 (M5–M8)** starts only when the user says go (§5). M5 is the agent loop: OpenRouter `ChatModel`, `FakeChatModel`, the loop, the approval gate, limits, traces, the CLI, unit tests. **Check first:** OpenRouter's API and model prices, the SDK client version. One approved smoke call per milestone at most.
 - **Last session:** 2026-10-26. Closed M0–M4.
   - **M4:** the README (a landing page), `docs/how-it-works.md`, the §4.6 demo (`docs/demo/`: the user's GIF and a transcript), MIT `LICENSE`, version 0.1.0, `.gitleaks.toml`, the CI seed step, and six approved `REQUIREMENTS.md` edits.
   - **Tests:** 327 unit, 61 integration (105 s).

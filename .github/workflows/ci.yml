@@ -1,8 +1,9 @@
 # Free checks on every push and pull request (REQUIREMENTS.md §6). No secrets.
 # check: lint, types, unit tests, build. integration: the Compose stack built
-# from catalog-api v1.1.0, and the *.int.test.ts files against it. Whether
-# integration stays on every pull request is decided at M4, once its run time
-# on GitHub is known. The real-model evals (manual only) arrive in M7.
+# from catalog-api v1.1.0, seeded, and the *.int.test.ts files against it.
+# integration stays on every pull request: about 4 minutes on GitHub at the
+# first push (2026-10-26), stack build included. The real-model evals (manual
+# only) arrive in M7.
 name: CI
 
 # push is limited to main and tags, so a pull request from a branch in this
