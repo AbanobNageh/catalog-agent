@@ -1,0 +1,25 @@
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Agent runs (Phase 2): traces hold full prompts and tool results; eval runs hold raw output
+traces/
+evals/runs/
+
+# Claude Code: personal, uncommitted overrides
+.claude/settings.local.json
+CLAUDE.local.md
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(git push*)",
+      "Bash(gh repo *)",
+      "Bash(gh secret *)",
+      "Bash(gh release *)",
+      "Bash(gh workflow run*)",
+      "Bash(docker compose down*)",
+      "Bash(docker volume rm*)",
+      "Bash(docker volume prune*)",
+      "Bash(docker system prune*)",
+      "Bash(npm run agent*)",
+      "Bash(npm run eval*)",
+      "PowerShell(git push*)",
+      "PowerShell(gh repo *)",
+      "PowerShell(gh secret *)",
+      "PowerShell(gh release *)",
+      "PowerShell(gh workflow run*)",
+      "PowerShell(docker compose down*)",
+      "PowerShell(docker volume rm*)",
+      "PowerShell(docker volume prune*)",
+      "PowerShell(docker system prune*)",
+      "PowerShell(npm run agent*)",
+      "PowerShell(npm run eval*)"
+    ]
+  }
+}
