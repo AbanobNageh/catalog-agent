@@ -1,4 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/server';
+import type { Product } from '../../catalog/types.js';
 import { formatPrice } from '../money.js';
 import { toolSuccess } from '../results.js';
 import {
@@ -16,6 +17,25 @@ Read this before changing a product: its version is what a change must send back
 Prices are integer cents: priceCents 79900 = 799.00 EGP; "price" is the same, formatted.
 Find ids with search_products.`;
 
+/** The full product as get_product and create_product return it: the API's fields plus `price`. */
+export function toProductOutput(p: Product): ProductOutput {
+  return {
+    id: p.id,
+    sku: p.sku,
+    name: p.name,
+    description: p.description,
+    category: p.category,
+    brand: p.brand,
+    priceCents: p.priceCents,
+    price: formatPrice(p.priceCents, p.currency),
+    currency: p.currency,
+    stock: p.stock,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    version: p.version,
+  };
+}
+
 /** `get_product`: GET /products/:id (REQUIREMENTS.md §4.2). */
 export function registerGetProduct(server: McpServer, deps: ToolDeps) {
   server.registerTool(
@@ -30,21 +50,7 @@ export function registerGetProduct(server: McpServer, deps: ToolDeps) {
     ({ id }) =>
       runTool(NAME, deps.logger, async (ctx) => {
         const p = await deps.client.getProduct(id, ctx);
-        const data: ProductOutput = {
-          id: p.id,
-          sku: p.sku,
-          name: p.name,
-          description: p.description,
-          category: p.category,
-          brand: p.brand,
-          priceCents: p.priceCents,
-          price: formatPrice(p.priceCents, p.currency),
-          currency: p.currency,
-          stock: p.stock,
-          createdAt: p.createdAt,
-          updatedAt: p.updatedAt,
-          version: p.version,
-        };
+        const data = toProductOutput(p);
         return toolSuccess(
           `${p.name} (${p.sku}): ${data.price}, stock ${p.stock}, version ${p.version}.`,
           data,

@@ -45,12 +45,14 @@ const client = new CatalogClient({
 // serveStdio owns the stdio transport and serves both protocol eras: a 2025
 // client's `initialize` handshake and stateless 2026-07-28 requests. It calls
 // the factory for the server instance that answers the connection.
-const handle = serveStdio(() => createServer({ client, logger }));
+const access = config.access;
+const handle = serveStdio(() => createServer({ client, logger, access }));
 
 logger.info('server started', {
   ...SERVER_INFO,
   catalogApiUrl: config.catalogApiUrl,
   timeoutMs: config.timeoutMs,
+  access,
 });
 
 // When stdin closes, the transport closes by itself. A signal closes it too.

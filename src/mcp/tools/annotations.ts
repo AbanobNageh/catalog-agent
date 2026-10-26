@@ -14,3 +14,28 @@ export const READ_ONLY: ToolAnnotations = {
   readOnlyHint: true,
   openWorldHint: false,
 };
+
+/**
+ * create_product (ADR-0006): it only adds a product, so not destructive. Not
+ * idempotent: a repeat is SKU_EXISTS, or a second product if the sku differs.
+ */
+export const ADDITIVE_WRITE: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false,
+};
+
+/**
+ * set_price, set_stock (ADR-0006):
+ * - destructiveHint: true, because they overwrite the old value (the spec's
+ *   false means "only additive updates")
+ * - idempotentHint: true, because a repeat with the same expectedVersion
+ *   gets STALE_VERSION and changes nothing (If-Match)
+ */
+export const CONDITIONAL_OVERWRITE: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: true,
+  openWorldHint: false,
+};

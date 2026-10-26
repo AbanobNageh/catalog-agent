@@ -41,6 +41,15 @@ export interface ToolErrorData {
   details?: CatalogErrorDetails;
 }
 
+/** A tool's own wording for hints that depend on what the tool did. */
+export interface ToolHints {
+  /**
+   * For a write whose outcome is unknown (`details.outcome: 'unknown'`). The
+   * default suits an update; create_product says how to look for the product.
+   */
+  outcomeUnknown?: string;
+}
+
 export function toolSuccess<T extends object>(
   summary: string,
   data: T,
@@ -57,13 +66,13 @@ const INTERNAL_HINT =
  * retry count). Anything else thrown is a bug in this server: INTERNAL with a
  * fixed message, because its own message could hold anything.
  */
-export function errorData(err: unknown): ToolErrorData {
+export function errorData(err: unknown, hints: ToolHints = {}): ToolErrorData {
   return err instanceof CatalogError
     ? {
         code: err.code,
         message: err.message,
         retryable: err.retryable,
-        hint: hintFor(err),
+        hint: hintFor(err, hints),
         ...(err.details ? { details: { ...err.details } } : {}),
       }
     : {
@@ -81,9 +90,12 @@ export function toolError(data: ToolErrorData): ToolErrorResult {
 }
 
 /** The hints of REQUIREMENTS.md §4.3. */
-function hintFor(err: CatalogError): string {
+function hintFor(err: CatalogError, hints: ToolHints): string {
   if (err.details?.outcome === 'unknown') {
-    return 'the change may have been applied; read the product before retrying';
+    return (
+      hints.outcomeUnknown ??
+      'the change may have been applied; read the product before retrying'
+    );
   }
   switch (err.code) {
     case 'VALIDATION':

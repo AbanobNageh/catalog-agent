@@ -16,6 +16,7 @@ interface JsonSchema {
   maximum?: number;
   minLength?: number;
   maxLength?: number;
+  pattern?: string;
   enum?: string[];
   properties?: Record<string, JsonSchema>;
   required?: string[];
@@ -41,6 +42,7 @@ const KEYS_COMPARED = [
   'maximum',
   'minLength',
   'maxLength',
+  'pattern',
   'enum',
 ] as const;
 
@@ -50,16 +52,36 @@ const KEYS_COMPARED = [
  */
 const DELIBERATE: [string, (typeof KEYS_COMPARED)[number], unknown, unknown][] =
   [
-    // An empty string filters nothing; the API accepts it, we don't.
+    // Search: an empty string filters nothing; the API accepts it, we don't.
+    // Create: the API's DTO says @IsNotEmpty(), which /docs-json doesn't show.
     ['q', 'minLength', 1, undefined],
     ['category', 'minLength', 1, undefined],
     ['brand', 'minLength', 1, undefined],
+    ['sku', 'minLength', 1, undefined],
+    ['name', 'minLength', 1, undefined],
     // page × size ≤ 10,000 with size ≥ 1: no page past 10,000 can be fetched.
     ['page', 'maximum', 10_000, 2_147_483_647],
+    // ISO 4217 letters; the API's @Length(3, 3) @IsUppercase() also allows
+    // digits, and isn't in /docs-json (ADR-0006).
+    ['currency', 'pattern', '^[A-Z]{3}$', undefined],
   ];
 
-/** Parameters a tool adds that aren't catalog-api's. */
-const OWN_PARAMETERS = new Set(['includeFacets']);
+/**
+ * Parameters a tool adds that aren't catalog-api's body fields, per tool.
+ * The set tools' `id` is the API's path parameter and `expectedVersion` its
+ * If-Match header: this file only checks that PATCH declares both. Their
+ * bounds aren't in /docs-json: `expectedVersion`'s 1–int32 comes from
+ * catalog-api's if-match.ts and is pinned in schemas.test.ts (review 5).
+ * DELIBERATE above is keyed by parameter name, so an entry applies to every
+ * tool with that parameter.
+ */
+const OWN_PARAMETERS: Record<string, Set<string>> = {
+  search_products: new Set(['includeFacets']),
+  list_facets: new Set(),
+  create_product: new Set(),
+  set_price: new Set(['id', 'expectedVersion', 'dryRun']),
+  set_stock: new Set(['id', 'expectedVersion', 'dryRun']),
+};
 
 let api: OpenApi;
 let tools: Map<string, { input: JsonSchema; output: JsonSchema }>;
@@ -70,7 +92,8 @@ beforeAll(async () => {
   expect(res.ok).toBe(true);
   api = (await res.json()) as OpenApi;
 
-  // In-process: only tools/list is needed, so the catalog client is never called.
+  // In-process: only tools/list is needed, so the catalog client is never
+  // called. Write access, so every tool is listed.
   const catalog = new CatalogClient({
     baseUrl: BASE_URL,
     apiKey: KEYS.read,
@@ -81,6 +104,7 @@ beforeAll(async () => {
     createServer({
       client: catalog,
       logger: createLogger({ write: () => {} }),
+      access: 'write',
     }),
   );
   const listed = await client.listTools();
@@ -111,12 +135,18 @@ function component(name: string): JsonSchema {
   return schema as JsonSchema;
 }
 
+/** A request body's fields, by name, from its component schema. */
+function bodyFields(name: string): Map<string, JsonSchema> {
+  return new Map(Object.entries(component(name).properties ?? {}));
+}
+
 /** Every difference between a tool's parameters and the API's, minus the deliberate ones. */
 function drift(tool: string, apiParams: Map<string, JsonSchema>): string[] {
   const ours = tools.get(tool)?.input.properties ?? {};
+  const own = OWN_PARAMETERS[tool] ?? new Set();
   const problems: string[] = [];
   for (const [name, schema] of Object.entries(ours)) {
-    if (OWN_PARAMETERS.has(name)) continue;
+    if (own.has(name)) continue;
     const theirs = apiParams.get(name);
     if (!theirs) {
       problems.push(`${tool}.${name}: not a catalog-api parameter`);
@@ -126,6 +156,8 @@ function drift(tool: string, apiParams: Map<string, JsonSchema>): string[] {
       const a = schema[key];
       const b = theirs[key];
       if (JSON.stringify(a) === JSON.stringify(b)) continue;
+      // The DTOs say `number` with @IsInt(); our `integer` is the same rule, stated.
+      if (key === 'type' && compatible(a as string, b as string)) continue;
       const allowed = DELIBERATE.some(
         ([p, k, o, t]) =>
           p === name &&
@@ -149,11 +181,43 @@ function compatible(ours: string | undefined, theirs: string | undefined) {
 }
 
 describe('contract with catalog-api v1.1.0 (/docs-json)', () => {
-  it('lists the three tools it compares (a missing tool must not pass by default)', () => {
+  it('lists the six tools it compares (a missing tool must not pass by default)', () => {
     expect([...tools.keys()].sort()).toEqual([
+      'create_product',
       'get_product',
       'list_facets',
       'search_products',
+      'set_price',
+      'set_stock',
+    ]);
+  });
+
+  it('create_product takes exactly the create fields, with the same required list and bounds', () => {
+    const fields = bodyFields('CreateProductDto');
+    const input = tools.get('create_product')?.input;
+    expect(Object.keys(input?.properties ?? {}).sort()).toEqual(
+      [...fields.keys()].sort(),
+    );
+    expect(input?.required?.sort()).toEqual(
+      component('CreateProductDto').required?.sort(),
+    );
+    expect(drift('create_product', fields)).toEqual([]);
+  });
+
+  it('set_price and set_stock send one update field, with its bounds, to PATCH /products/{id} with If-Match', () => {
+    const fields = bodyFields('UpdateProductDto');
+    expect(drift('set_price', fields)).toEqual([]);
+    expect(drift('set_stock', fields)).toEqual([]);
+    expect(
+      Object.keys(tools.get('set_price')?.input.properties ?? {}),
+    ).toContain('priceCents');
+    expect(
+      Object.keys(tools.get('set_stock')?.input.properties ?? {}),
+    ).toContain('stock');
+    const patch = api.paths['/products/{id}']?.patch?.parameters ?? [];
+    expect(patch.map((p) => `${p.in}:${p.name}`)).toEqual([
+      'path:id',
+      'header:If-Match',
     ]);
   });
 
@@ -206,6 +270,16 @@ describe('contract with catalog-api v1.1.0 (/docs-json)', () => {
     const search = tools.get('search_products')?.output;
     check(search?.properties?.hits?.items, 'SearchHitResponse');
     check(tools.get('get_product')?.output, 'ProductResponse');
+    check(tools.get('create_product')?.output, 'ProductResponse');
+    // The set tools' values, and the fields they copy from the product.
+    for (const tool of ['set_price', 'set_stock']) {
+      const output = tools.get(tool)?.output;
+      check(output?.properties?.current, 'ProductResponse');
+      const product = component('ProductResponse').required ?? [];
+      for (const field of ['id', 'sku', 'name', 'version']) {
+        expect(product, `${tool}.${field}`).toContain(field);
+      }
+    }
   });
 
   it('the search result has the hits, total and facets we read', () => {

@@ -1,25 +1,25 @@
-import type { Client } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it } from 'vitest';
-import { CatalogClient } from '../catalog/client.js';
 import type { Product, SearchHit, SearchResult } from '../catalog/types.js';
-import { createLogger } from '../log.js';
-import { connect, ERAS, errorOf } from '../testing/mcp.js';
-import { createServer } from './server.js';
+import {
+  call,
+  closeAll,
+  harness as connectHarness,
+  json,
+  KEY,
+  textOf,
+  type Handler,
+} from '../testing/harness.js';
+import { ERAS, errorOf, type Era } from '../testing/mcp.js';
 
-// MCP-level tests (§4.5): a real MCP client talks to the real server
-// in-process, in both protocol eras. catalog-api is a scripted fake fetch
-// behind a real CatalogClient, so the whole path below the tools is real too.
+// MCP-level tests (§4.5) of the read tools, in both protocol eras, on a server
+// in read-only mode. The write tools are in write-tools.test.ts.
 
-const KEY = 'dev-read-key-not-secret-0000000000000000';
 const ID = '01150e76-a154-4f63-a9b7-497146a129f0';
 
-type Handler = (url: URL) => Response | Promise<Response>;
+const harness = (era: Era, ...steps: Handler[]) =>
+  connectHarness(era, 'read', ...steps);
 
-const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
+afterEach(closeAll);
 
 const hit = (n: number, overrides: Partial<SearchHit> = {}): SearchHit => ({
   id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
@@ -48,67 +48,13 @@ const searchResult = (
   facets: facets ?? { category: [], brand: [], price: [] },
 });
 
-interface Harness {
-  client: Client;
-  requests: URL[];
-  logs: Record<string, unknown>[];
-}
-
-const open: Client[] = [];
-afterEach(async () => {
-  await Promise.all(open.splice(0).map((c) => c.close()));
-});
-
-async function harness(era: (typeof ERAS)[number], ...steps: Handler[]) {
-  const requests: URL[] = [];
-  const lines: string[] = [];
-  const fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = new URL(input instanceof Request ? input.url : input);
-    requests.push(url);
-    expect(new Headers(init?.headers).get('authorization')).toBe(
-      `Bearer ${KEY}`,
-    );
-    const step = steps.shift();
-    if (!step) throw new Error(`unexpected request ${url.pathname}`);
-    return step(url);
-  }) as typeof globalThis.fetch;
-  const logger = createLogger({ write: (l) => lines.push(l) });
-  const catalog = new CatalogClient({
-    baseUrl: 'http://catalog.test',
-    apiKey: KEY,
-    timeoutMs: 1000,
-    fetch,
-    clock: { now: () => 0, sleep: () => Promise.resolve() },
-    logger,
-  });
-  const client = await connect(era, () =>
-    createServer({ client: catalog, logger }),
-  );
-  open.push(client);
-  // Every test runs in the era it says it does (Review Focus 7).
-  expect(client.getProtocolEra()).toBe(era);
-  return {
-    client,
-    requests,
-    get logs() {
-      return lines.map((l) => JSON.parse(l) as Record<string, unknown>);
-    },
-  } satisfies Harness;
-}
-
-const call = (h: Harness, name: string, args: Record<string, unknown> = {}) =>
-  h.client.callTool({ name, arguments: args });
-
-const textOf = (result: { content?: unknown }) =>
-  ((result.content as { text: string }[])[0]?.text ?? '') as string;
-
 describe.each(ERAS)('MCP server (%s era)', (era) => {
   it('connects in the era under test', async () => {
     const h = await harness(era);
     expect(h.client.getProtocolEra()).toBe(era);
   });
 
-  it('lists exactly the three read tools, read-only and closed-world', async () => {
+  it('in read mode, lists exactly the three read tools, read-only and closed-world', async () => {
     const h = await harness(era);
     const { tools } = await h.client.listTools();
     expect(tools.map((t) => t.name)).toEqual([

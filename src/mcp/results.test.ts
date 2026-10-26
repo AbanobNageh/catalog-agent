@@ -127,6 +127,23 @@ describe('errorData: one row per §4.3 code', () => {
     });
   });
 
+  it('a tool can give its own hint for an unknown outcome, and only for that', () => {
+    const hints = { outcomeUnknown: 'search for it before retrying' };
+    const unknown = err('UNAVAILABLE', 'no answer', true, {
+      outcome: 'unknown',
+    });
+    expect(errorData(unknown, hints).hint).toBe(
+      'search for it before retrying',
+    );
+    // A plain failure (nothing was written) keeps the §4.3 hint.
+    expect(errorData(err('UNAVAILABLE', 'no answer', true), hints).hint).toBe(
+      'temporary; retry later',
+    );
+    expect(errorData(err('SKU_EXISTS', 'sku already exists'), hints).hint).toBe(
+      'a product with this sku already exists',
+    );
+  });
+
   it('copies only the known fields: never the stack, the status or the retry count', () => {
     const data = errorData(err('NOT_FOUND', 'product not found'));
     expect(Object.keys(data).sort()).toEqual([

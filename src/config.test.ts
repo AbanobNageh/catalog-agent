@@ -4,13 +4,29 @@ import { loadConfig } from './config.js';
 const KEY = 'dev-read-key-not-secret-0000000000000000';
 
 describe('loadConfig', () => {
-  it('defaults to the Compose stack on :3100 and a 5s timeout', () => {
+  it('defaults to the Compose stack on :3100, a 5s timeout and write access', () => {
     expect(loadConfig({ CATALOG_API_KEY: KEY })).toEqual({
       catalogApiUrl: 'http://localhost:3100',
       catalogApiKey: KEY,
       timeoutMs: 5000,
+      access: 'write',
     });
   });
+
+  it.each(['read', 'write'] as const)('reads CATALOG_ACCESS %s', (access) => {
+    expect(
+      loadConfig({ CATALOG_API_KEY: KEY, CATALOG_ACCESS: access }).access,
+    ).toBe(access);
+  });
+
+  it.each(['', 'READ', 'Write', 'admin', ' write', 'read '])(
+    'rejects CATALOG_ACCESS %j',
+    (value) => {
+      expect(() =>
+        loadConfig({ CATALOG_API_KEY: KEY, CATALOG_ACCESS: value }),
+      ).toThrow(/CATALOG_ACCESS must be read or write/);
+    },
+  );
 
   it('reads CATALOG_TIMEOUT_MS', () => {
     const config = loadConfig({

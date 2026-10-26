@@ -119,6 +119,74 @@ export const getProductInput = z.strictObject({
     .describe('The product id (a UUID), as search_products returns it.'),
 });
 
+// Write inputs (ADR-0006). catalog-api's create DTO has no maximum string
+// lengths, so neither do these; `currency` is stricter than its "3 upper-case
+// characters" (ISO 4217 codes are letters).
+
+const productId = () =>
+  z
+    .uuid()
+    .describe('The product id (a UUID), from search_products or get_product.');
+
+const nonEmpty = (what: string) => z.string().min(1).describe(what);
+
+export const createProductInput = z.strictObject({
+  sku: nonEmpty(
+    'Stock-keeping unit, unique across the catalogue, for example "BOO-PAP-011". A taken sku is SKU_EXISTS.',
+  ),
+  name: nonEmpty('Product name.'),
+  description: z.string().describe('Free text; may be empty.'),
+  category: nonEmpty(
+    'Category, case-sensitive, for example "books". list_facets lists the existing ones.',
+  ),
+  brand: nonEmpty(
+    'Brand, case-sensitive, for example "Papyrus". list_facets lists the existing ones.',
+  ),
+  priceCents: nonNegativeInt().describe(
+    'Price in integer cents: 79900 = 799.00 EGP.',
+  ),
+  stock: nonNegativeInt().describe('Units in stock.'),
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/, 'currency must be 3 upper-case letters, such as EGP')
+    .optional()
+    .describe('ISO 4217 code, 3 upper-case letters. Leave it out for EGP.'),
+});
+
+// The set tools: one absolute value, the version it was read at, and an
+// explicit dryRun. All required, so every call says which it is.
+const setInput = <F extends string>(field: F, value: z.ZodType<number>) =>
+  z.strictObject({
+    id: productId(),
+    ...({ [field]: value } as Record<F, z.ZodType<number>>),
+    expectedVersion: z
+      .int()
+      .min(1)
+      .max(INT32_MAX)
+      .describe(
+        "The product's version from get_product (or from the last change's result). If the product has changed since, the call fails with STALE_VERSION and writes nothing.",
+      ),
+    dryRun: z
+      .boolean()
+      .describe(
+        'true: check the call and report what would change, writing nothing. false: make the change.',
+      ),
+  });
+
+export const setPriceInput = setInput(
+  'priceCents',
+  nonNegativeInt().describe(
+    'The new price, absolute, in integer cents: 79900 = 799.00 EGP.',
+  ),
+);
+
+export const setStockInput = setInput(
+  'stock',
+  nonNegativeInt().describe(
+    'The new stock level, absolute (not a change): 50 means 50 units in stock.',
+  ),
+);
+
 // Outputs: what structuredContent carries. The SDK checks every successful
 // result against these before it's sent.
 
@@ -186,9 +254,63 @@ export const listFacetsOutput = facets.extend({
   total: z.int().describe('How many products match the filters.'),
 });
 
+/**
+ * A set tool's result, one flat object for all three outcomes (ADR-0006): a
+ * dry run, an applied change, and a no-op. A union would make the top level
+ * an `anyOf`, which some clients handle badly.
+ */
+const setOutput = <V extends z.ZodObject>(values: V) =>
+  z.object({
+    dryRun: z
+      .boolean()
+      .describe('Whether this was a dry run (nothing written).'),
+    id: z.string(),
+    sku: z.string(),
+    name: z.string(),
+    current: values.describe(
+      'The values now: after the change, if one was applied.',
+    ),
+    version: z
+      .int()
+      .describe(
+        "The product's version now. Send it as expectedVersion with the next change.",
+      ),
+    proposed: values
+      .optional()
+      .describe('Dry run only: the values the change would set.'),
+    wouldChange: z
+      .boolean()
+      .optional()
+      .describe('Dry run only: false when the values are already there.'),
+    previous: values
+      .optional()
+      .describe('Applied only: the values before the change.'),
+    changed: z
+      .boolean()
+      .optional()
+      .describe(
+        'Applied only: false when the values were already there, so nothing was written and the version did not change.',
+      ),
+    confirmedAfterTimeout: z
+      .boolean()
+      .optional()
+      .describe(
+        'Applied only: true when catalog-api did not answer in time, and a re-read showed the change had been applied.',
+      ),
+  });
+
+export const stockValues = z.object({ stock: z.int() });
+export const priceValues = z.object(money);
+
+export const setStockOutput = setOutput(stockValues);
+export const setPriceOutput = setOutput(priceValues);
+
 export type SearchProductsInput = z.infer<typeof searchProductsInput>;
 export type ListFacetsInput = z.infer<typeof listFacetsInput>;
 export type SearchProductsOutput = z.infer<typeof searchProductsOutput>;
 export type ProductOutput = z.infer<typeof productOutput>;
 export type ListFacetsOutput = z.infer<typeof listFacetsOutput>;
+export type CreateProductInput = z.infer<typeof createProductInput>;
+export type SetStockOutput = z.infer<typeof setStockOutput>;
+export type SetPriceOutput = z.infer<typeof setPriceOutput>;
 export type Facets = z.infer<typeof facets>;

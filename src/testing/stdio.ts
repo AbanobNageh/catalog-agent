@@ -22,6 +22,7 @@ export function serverEnv(
     CATALOG_API_URL: BASE_URL,
     CATALOG_API_KEY: KEYS.read,
     CATALOG_TIMEOUT_MS: '5000',
+    CATALOG_ACCESS: 'read',
     ...overrides,
   };
   return Object.fromEntries(

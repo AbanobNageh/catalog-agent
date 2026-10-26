@@ -5,7 +5,18 @@ export interface CatalogConfig {
   catalogApiKey: string;
   /** Per-request timeout for catalog-api calls, body included (ADR-0004). */
   timeoutMs: number;
+  /**
+   * Which tools exist (ADR-0006). `read` registers only the read tools, so the
+   * write tools aren't in tools/list at all; `write` adds them. The key's
+   * scope is the second layer: catalog-api refuses writes with a read key.
+   */
+  access: CatalogAccess;
 }
+
+export type CatalogAccess = 'read' | 'write';
+
+/** The user's choice (ADR-0006): writes on, like most MCP servers. .env.example sets read. */
+const DEFAULT_ACCESS: CatalogAccess = 'write';
 
 const TIMEOUT_MS = { default: 5000, min: 100, max: 60_000 };
 
@@ -66,10 +77,20 @@ export function loadConfig(env: NodeJS.ProcessEnv): CatalogConfig {
     );
   }
 
+  const access = env.CATALOG_ACCESS ?? DEFAULT_ACCESS;
+  if (access !== 'read' && access !== 'write') {
+    errors.push('CATALOG_ACCESS must be read or write');
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid configuration:\n- ${errors.join('\n- ')}`);
   }
-  return { catalogApiUrl, catalogApiKey, timeoutMs: timeoutMs ?? 0 };
+  return {
+    catalogApiUrl,
+    catalogApiKey,
+    timeoutMs: timeoutMs ?? 0,
+    access: access as CatalogAccess,
+  };
 }
 
 /** Digits only (no sign, decimals, exponent or spaces); unset means the default. */
