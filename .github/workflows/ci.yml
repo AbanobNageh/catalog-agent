@@ -1,0 +1,38 @@
+# Free checks on every push and pull request (REQUIREMENTS.md §6). No secrets.
+# The integration job (the Compose stack from v1.1.0) arrives in M1, and the
+# real-model evals (manual only) in M7.
+name: CI
+
+# push is limited to main and tags, so a pull request from a branch in this
+# repo runs once (as pull_request), not twice.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
