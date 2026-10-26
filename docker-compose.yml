@@ -1,0 +1,136 @@
+# The product catalogue the MCP server talks to: catalog-api v1.1.0 and its
+# dependencies, built from product-catalog's git tag (ADR-0003).
+# Settings copied on 2026-10-26 from product-catalog's docker-compose.yml at
+# tag v1.1.0 (commit 50f9430). Moving to a newer tag means re-reading that file.
+#
+# First start, or after changing the tag: docker compose up --build -d --wait
+# (about 3 minutes; --build fetches the git context, so it needs the network).
+# Later starts: docker compose up -d --wait
+# Only catalog-api has a host port, 3100, so this stack doesn't clash with
+# product-catalog's (3000, 5432, 6379, 9200).
+name: catalog-agent
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: catalog
+      POSTGRES_PASSWORD: catalog # local only
+      POSTGRES_DB: catalog
+    volumes:
+      # Postgres 18+ keeps data in /var/lib/postgresql/<major>/docker, so mount the parent.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U catalog -d catalog']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  opensearch:
+    image: opensearchproject/opensearch:3.9.0
+    environment:
+      discovery.type: single-node
+      # Local only. With the security plugin off, no admin password is needed.
+      DISABLE_SECURITY_PLUGIN: 'true'
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      bootstrap.memory_lock: 'true'
+      # search-service refuses to start without this: a versioned delete aimed
+      # at a missing products index would otherwise create it (product-catalog ADR-0007).
+      action.auto_create_index: '-products*,+*'
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
+  # One-shot: applies catalog-api's committed migrations (`prisma migrate
+  # deploy`, the image's default command), then exits.
+  migrate:
+    build:
+      context: https://github.com/AbanobNageh/product-catalog.git#v1.1.0:services/catalog-api
+      target: migrate
+    image: catalog-agent-catalog-api-migrate:v1.1.0
+    environment:
+      DATABASE_URL: postgresql://catalog:catalog@postgres:5432/catalog
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  search-service:
+    build:
+      context: https://github.com/AbanobNageh/product-catalog.git#v1.1.0:services/search-service
+    image: catalog-agent-search-service:v1.1.0
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      LOG_LEVEL: info
+    healthcheck:
+      # Distroless has no shell or curl, so the binary probes its own /readyz.
+      test: ['CMD', '/search-service', 'healthcheck']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  catalog-api:
+    build:
+      context: https://github.com/AbanobNageh/product-catalog.git#v1.1.0:services/catalog-api
+    image: catalog-agent-catalog-api:v1.1.0
+    ports:
+      - '3100:3000'
+    environment:
+      DATABASE_URL: postgresql://catalog:catalog@postgres:5432/catalog
+      REDIS_URL: redis://redis:6379/0
+      SEARCH_SERVICE_URL: http://search-service:8080
+      LOG_LEVEL: log
+      # Dev keys from product-catalog's Compose file: public, NOT secret.
+      READ_API_KEY: dev-read-key-not-secret-0000000000000000
+      WRITE_API_KEY: dev-write-key-not-secret-000000000000000
+      ADMIN_API_KEY: dev-admin-key-not-secret-000000000000000
+    healthcheck:
+      # /readyz checks Postgres and Redis only: search-service being down
+      # doesn't take catalog-api out (product-catalog ADR-0001).
+      test:
+        ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/readyz']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      search-service:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  opensearch-data:
