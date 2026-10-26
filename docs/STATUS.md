@@ -3,76 +3,92 @@
 > Edit rules: the AI rewrites **Now** whenever the next step changes. The **Checklist** is tick-only: change `[ ]` to `[x]` and append `· date · commit · note link`. Never reword, reorder or delete items without asking.
 
 ## Now
-- **Current:** M3 Write tools (§4.2's write rows, §4.3 and §4.4 through the tools, §4.5's write integration tests, the M3 row of §7). Not started; no plan yet.
-- **Last session:** 2026-10-26. Closed M0, M1 and M2 ([M2 note](milestones/2026-10-26-M2-mcp-read-tools.md)).
-  - **M2 built a stdio MCP server** (`src/main.ts`, `src/mcp/`) with three read tools, `search_products`, `get_product` and `list_facets`, on M1's `CatalogClient`. [ADR-0005](adr/0005-mcp-tool-results-and-errors.md) is accepted.
-  - **Tests:** 210 unit tests (the MCP-level suite in both eras) and 42 integration tests (stdio, tools, `.env`, the contract check).
-  - **Checked live:** it works in MCP Inspector and in Claude Code through `.mcp.json`.
-  - **Running:** the `catalog-agent` Compose stack on :3100, seeded. `.env` exists, a copy of `.env.example` with the read key. The user asked to compact after the M2 close.
-- **Next step: start M3,** following the milestone flow in `AGENTS.md`.
-  1. **Check the official docs first.** SDK v2 at https://ts.sdk.modelcontextprotocol.io/v2/, for write-tool annotations (`destructiveHint`, `idempotentHint`) and anything new since 2.4.0 (`npm view @modelcontextprotocol/server versions`).
-  2. **Read the M2 code first:**
-     - `src/mcp/results.ts`: `errorData` / `toolError` already hold every §4.3 hint, including "the change may have been applied; read the product before retrying"
-     - `src/mcp/tool-call.ts` (`runTool`)
-     - `src/mcp/schemas.ts`
-     - `src/mcp/server.ts`
-     - `src/testing/{mcp,stdio,fixtures}.ts`
+- **Current:** M4 Phase 1 release. Not started; no plan yet.
+  - **§7's "Done when":** README (§8), the §4.6 demo, tag `v0.1.0`, gitleaks clean.
+  - **The user** creates the GitHub repo and pushes, at that moment, after their go-ahead.
+  - **The AI** proposes the README link for product-catalog: a proposal only, never an edit there.
+  - **After M4:** the end of Phase 1, so `close-milestone` step 10 proposes cuts to `AGENTS.md`.
+- **Last session:** 2026-10-26. Closed M0–M3 ([M3 note](milestones/2026-10-26-M3-write-tools.md)).
+  - **M3 added three write tools,** `create_product`, `set_price` and `set_stock`, behind `CATALOG_ACCESS=read|write`. [ADR-0006](adr/0006-write-tools.md) is accepted.
+    - **The set tools:** `expectedVersion` and `dryRun` are required; every call reads the product first; a no-op writes nothing; the cancel signal is checked before any `PATCH`.
+    - **`create_product`** is never retried, and has its own outcome-unknown hint.
+  - **Tests:** 326 unit tests (MCP-level in both eras) and 61 integration tests (about 105 s).
+  - **Checked live** in Inspector and in Claude Code (dry run, apply, a planted `STALE_VERSION`).
+- **Running:**
+  - the `catalog-agent` Compose stack on :3100, seeded
+  - **the user's `.env` now has the write key and `CATALOG_ACCESS=write`** (set during the M3 demo). `.env.example` still has read/read
+  - demo products `IT-DEMO-M3-1..3` (category `it-demo-m3`: Demo-Notebook, now at stock 50; Demo-Pencil-Case at 0; Demo-Planner at 8). Reuse them for M4's demo, then delete them with the admin key
+- **Next step: start M4,** following the milestone flow in `AGENTS.md`.
+  1. **Check the official docs first:**
+     - gitleaks: the current release, and how to install it on Windows (for example `go install github.com/zricethezav/gitleaks/v8@<version>`, since Go 1.26 is installed, or winget/scoop)
+     - the GitHub Actions versions in `.github/workflows/ci.yml`
+     - `npm view @modelcontextprotocol/server versions` (2.4.0 at M3) and the MCP spec's revision
+     - the MIT licence text
+  2. **Read first:**
+     - `REQUIREMENTS.md` §8 (the README rules: a recruiter part first, who did what, the AI's mistakes) and §4.6 (the demo)
+     - the M0–M3 notes (`docs/milestones/*-M?-*.md`, their "Review findings" and "the AI's own mistakes") and the experiment log in `docs/ai-workflow.md`: the README's log of the AI's mistakes is built from them
+     - `docs/adr/` 0001–0006, for the README's design section
   3. **Likely decisions to ask the user:**
-     - **`CATALOG_ACCESS`:** its default (`read`?), and how `.mcp.json` sets it. `.mcp.json` env would override `.env`, because variables already set win.
-     - **`dryRun`'s output shape:** §4.2 says `{ current, proposed, wouldChange, version }`.
-     - **No-op writes:** catalog-api raises the version even on a `PATCH` that changes nothing, which weakens ADR-0004's confirm check. Refuse them, or report `wouldChange: false` without writing?
-     - **`get_product` as the only source of `expectedVersion`:** list items do carry `version` (§3.2 is outdated there).
-     - **`create_product`'s outcome-unknown hint:** §4.4 wants "the product may have been created; search for the sku before retrying", but `results.ts` gives the generic update hint. Pass a per-tool hint?
-     - **Write annotations:**
-       - `create_product`: `destructiveHint: false`, `idempotentHint: false`
-       - `set_price` / `set_stock`: `idempotentHint: true`? Re-sending the same `expectedVersion` gets a 412, so the write is idempotent in effect.
-  4. **Write the plan,** `docs/milestones/<date>-M3-plan.md`, with a Review Focus. Then build test-first, run a fresh reviewer (give it the uncommitted diff and the plan, and tell it **to mutate only a temp copy, with absolute paths**), then `close-milestone`.
-- **Carried into M3** (from the M1 and M2 notes):
-  - **The tools:** `create_product`, `set_price` and `set_stock`. `expectedVersion` is required, and so is `dryRun`; prices and stock are absolute values only; a 409 is `SKU_EXISTS`; creates are never retried.
-  - **`CATALOG_ACCESS=read|write` decides which tools are registered.** With `read`, the write tools don't exist at all (a unit test). The API enforces the key's scope anyway; document both layers.
-  - **Skip or report no-op writes** before `updateProduct`.
-  - **Never pass `undefined` inside `changes`.**
-  - **Error results** are text only, built from the error's fields (ADR-0005).
-  - **§4.5's integration tests through the real stdio server:**
-    - get, then `set_stock`: version +1
-    - a planted concurrent update gives `STALE_VERSION` with the current version
-    - `dryRun` writes nothing
-    - `CATALOG_ACCESS=write` with the read key gets the API's 403
-    - a duplicate SKU gives `SKU_EXISTS`
-    - every §4.3 row that can be caused
-  - **MCP request timeouts** must allow one conditional update's worst case: about 41 s at the default 5 s timeout. The SDK client's default is 60 s. Inspector waited through 15 s; check it, and Claude Code (whose `MCP_TOOL_TIMEOUT` default is about 28 h), with a slow write.
+     - **The demo format:** a transcript or a GIF (§4.6), and who records it (the user, in Claude Code).
+     - **The demo's products:** §4.6 says "finds low-stock books", which are `SEED-*` products. The tests never write `SEED-*`, but would the demo restock one, or use `it-demo-*` products? A restock writes the shared seed data.
+     - **The version bump:** `0.1.0` in `package.json` and `SERVER_INFO` (`src/mcp/server.ts`).
+     - **The README's length and structure.** The production section covers:
+       - Streamable HTTP with OAuth 2.1 (read the 2026-07-28 authorization section first)
+       - idempotency keys or a lookup by SKU for create
+       - catalog-api's cache caveat (ADR-0006)
+       - an error schema once the spec has one (SEP-2145)
+     - **The `REQUIREMENTS.md` updates** listed below, for the user to approve.
+  4. **Write the plan** (`docs/milestones/<date>-M4-plan.md`) with a Review Focus. Build, then the fresh reviewer (give it the uncommitted diff and the plan; **mutate only a temp copy, with absolute paths**; **skip `pause.int.test.ts` while a demo is live**). Then `close-milestone`: gitleaks over all history, then stop. Creating the repo, pushing and tagging are the user's.
 - **Carried into M4:**
-  - CI green on GitHub at the first push; check the `integration` job's run time, which now includes stdio and `.env` tests that build `dist/` and use a `node_modules` junction or symlink
-  - gitleaks and the MIT `LICENSE`
-  - **the README:**
+  - **CI green on GitHub** at the first push. Check the `integration` job's run time, now about 105 s of tests plus the stack build; its stdio and `.env` tests build `dist/` and use a `node_modules` junction or symlink.
+  - **gitleaks** over all history, and the MIT `LICENSE`. Check that no `.env`, key or trace file was ever committed.
+  - **The README:**
     - who did what, and the AI's mistakes (from the milestone notes)
-    - the §4.6 demo (a Claude Code transcript), and the `.env` step before Claude Code
-    - "what I'd change in production": Streamable HTTP with OAuth 2.1 (as walked through on 2026-10-26; read the 2026-07-28 authorization section first), idempotency keys or a SKU lookup for create, and an error schema once the spec has one (SEP-2145)
-  - the user creates the GitHub repo after their go-ahead
-- **Carried into M6:** log the calls the SDK rejects before our handler (schema errors, unknown tools). Today they get no `tool call` line.
+    - §4.6's demo transcript: capture whether Claude Code asks for approval before each write tool, and the model's wording after `STALE_VERSION`
+    - the `.env` step before Claude Code, **as the first numbered step** (M2 and M3 both tripped on it)
+    - "two layers" of least privilege (`CATALOG_ACCESS` and the key's scope), and why delete and reindex are never exposed
+    - a set call's worst case: about 11 × `CATALOG_TIMEOUT_MS`, 57 s at the default
+    - "what I'd change in production" (see above)
+  - **Delete the demo products** after the demo.
+- **Carried into M5:** the per-call timeout must allow about 11 × `CATALOG_TIMEOUT_MS` for a set call.
+- **Carried into M6:**
+  - log the calls the SDK rejects before our handler (schema errors, unknown tools); today they get no `tool call` line
+  - consider a bound on a set call's total time
 - **Later:** a sweep command for `it-*` products left by a killed integration run.
 - **Facts worth remembering:**
   - **catalog-api:**
     - a write takes about 1 s, a read a few ms
     - a `PATCH` commits before its Redis and index calls, so its answer can come up to about 3 s later
-    - filters are case-sensitive; `relevance` without `q` is `newest`
+    - every `PATCH` raises the version, even one that changes nothing
+    - `GET /products/:id` is cached in Redis for 5 minutes, and `RedisCache.del` swallows its errors
+    - `If-Match` takes versions 1 to int32 max
+    - the create DTO has no maximum string lengths
+    - filters are case-sensitive; `relevance` without `q` is `newest`; `q` searches `name^3` and `description` only, never `sku`
     - facets are the top 20 categories and the top 50 brands
   - **The SDK:**
     - it drops in-flight requests when stdin reaches end-of-file
     - `StdioClientTransport` tolerates junk on stdout (only the raw-pipe test catches it)
-    - Inspector validates `structuredContent` even on `isError`
-  - **Claude Code** starts project servers in the repo folder.
+    - an unknown tool is a JSON-RPC `-32602` protocol error, not a tool result
+    - the handler's `ctx.mcpReq.signal` aborts on cancellation, in both eras
+    - the client's default request timeout is 60 s
+  - **Inspector:** it validates `structuredContent` even on `isError`. Its CLI uses the SDK client's 60 s default timeout.
+  - **Claude Code** starts project servers in the repo folder, and reads `.env` only when the server starts: reconnect with `/mcp` after editing it.
   - **Tests:** keep test client timeouts well clear of 1 s.
-- **Outdated in `REQUIREMENTS.md`:**
-  - **the MCP spec** is revision 2026-07-28 and the SDK is v2 (ADR-0002)
+- **Outdated in `REQUIREMENTS.md`** (to propose to the user):
+  - **the MCP spec** is revision 2026-07-28, and the SDK is v2 (ADR-0002)
   - **§3.2:** list items carry `version`
-  - **§4.2:** "a short text summary" is now a summary plus the JSON (ADR-0005)
+  - **§4.2:**
+    - "a short text summary" is now a summary plus the JSON (ADR-0005)
+    - it doesn't say `dryRun` is required (ADR-0006)
   - **§4.3:** error results are text only, and the SDK's schema rejections are plain text (ADR-0005)
+  - **§4.4:** the create hint "search for the sku" can't be followed; see ADR-0006 for the wording used
 - **Session gotchas:**
-  - commit with `git commit -F <file>`
-  - edit files with the Edit/Write tools only: no heredocs, no inline Python, no .NET `WriteAllText` (an M2 mutation done that way lost its output)
+  - commit with `git commit -F <file>`, and stage explicit paths only
+  - edit files with the Edit/Write tools only: no heredocs, no inline Python, no .NET `WriteAllText`, no `Set-Content`
   - run `npm run typecheck` after every change; check lint by its exit code
+  - **`npm run format` re-wraps lines,** so re-read a file before an Edit after formatting
   - if `npm run test:int` says "The build failed", fix the tsc errors it printed
+  - never import from a `*.test.ts` file into another test file: Vitest would run its tests there too
 - **Open questions / blockers:** none.
 
 ## Checklist
@@ -80,7 +96,7 @@
 - [x] M0 Scaffold · 2026-10-26 · 006e630..f548fd0 · [note](milestones/2026-10-26-M0-scaffold.md)
 - [x] M1 Catalog client · 2026-10-26 · d1055ae..15bbe9f · [note](milestones/2026-10-26-M1-catalog-client.md)
 - [x] M2 MCP server, read tools · 2026-10-26 · d2a2a68..63b32eb · [note](milestones/2026-10-26-M2-mcp-read-tools.md)
-- [ ] M3 Write tools
+- [x] M3 Write tools · 2026-10-26 · f12f571..3b83da6 · [note](milestones/2026-10-26-M3-write-tools.md)
 - [ ] M4 Phase 1 release
 
 ### Phase 2: the agent loop (§5; starts only after Phase 1 is published and the user says go)
