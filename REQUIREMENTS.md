@@ -43,7 +43,7 @@ Do these in milestone M0, unless a step says otherwise.
 | 1 | **Folder** `D:\Projects\catalog-agent` | Already created. It holds this file. |
 | 2 | **Git:** `git init`, branch `main`, `.gitignore` (Node, `.env`, `traces/`, `evals/runs/`, coverage) | Every commit made with the AI gets a co-author trailer, as in product-catalog. |
 | 3 | **GitHub repo** `AbanobNageh/catalog-agent`: public, MIT `LICENSE`, description and topics | **I create it and push, at the end of Phase 1 (M4), and only after my go-ahead.** Before the first push: run gitleaks over all history, and check that no key, `.env` or trace file was ever committed. |
-| 4 | **Toolchain:** Node 24, npm 11, TypeScript, the official MCP TypeScript SDK, a test runner, lint and format | Pin exact versions and record them in an ADR, as product-catalog's ADR-0004 does. product-catalog uses oxlint and Prettier; use the same unless there's a reason not to. |
+| 4 | **Toolchain:** Node 24, npm 11, TypeScript, the official MCP TypeScript SDK (v2, for spec revision 2026-07-28; ADR-0002), a test runner, lint and format | Pin exact versions and record them in an ADR, as product-catalog's ADR-0004 does. product-catalog uses oxlint and Prettier; use the same unless there's a reason not to. |
 | 5 | **Configuration:** `.env.example`, with `.env` git-ignored | `CATALOG_API_URL` (default `http://localhost:3100`), `CATALOG_API_KEY`. From Phase 2: `OPENROUTER_API_KEY`, `AGENT_MODEL`, and budget limits. All config comes from env vars, and every problem is reported at startup at once, like product-catalog's `loadConfig`. |
 | 6 | **The catalogue stack:** this repo's own `docker-compose.yml` runs Postgres, Redis, OpenSearch, migrate, search-service and catalog-api **built from the git tag `v1.1.0`** | See §3.3. Compose project name `catalog-agent`. Only catalog-api gets a host port, **3100**, so it doesn't clash with product-catalog's stack (3000, 5432, 6379, 9200). Both stacks plus the kind clusters won't fit in memory, so stop the other one first. |
 | 7 | **The AI context system**, modelled on product-catalog's ADR-0002: `AGENTS.md`, `CLAUDE.md` (imports AGENTS.md and the status file), `docs/STATUS.md` (a "Now" block and a tick-only checklist), `docs/adr/`, `docs/milestones/`, `docs/ai-workflow.md` (with an experiment log) | Read `D:\Projects\product-catalog\AGENTS.md`, `docs/ai-workflow.md`, `docs/adr/0002-tiered-ai-context-system.md` and `.claude/skills/close-milestone/SKILL.md`, then adapt them; don't copy them blindly. |
@@ -97,7 +97,7 @@ Checked live on 2026-10-25. Swagger UI is at `/docs` and the OpenAPI JSON at `/d
 - A bad integer gets one message: `<name> must be a whole number from <min> to <max>`.
 - There is no lookup by SKU. That's a known gap, so don't invent an endpoint for it.
 
-**The product shape:** `id`, `sku`, `name`, `description`, `category`, `brand`, `priceCents`, `currency`, `stock`, `createdAt`, `updatedAt`, and `version` (`version` only on `GET /products/:id`, `POST` and `PATCH`).
+**The product shape:** `id`, `sku`, `name`, `description`, `category`, `brand`, `priceCents`, `currency`, `stock`, `createdAt`, `updatedAt`, and `version` (`version` on `GET /products/:id`, `POST`, `PATCH` and the `GET /products` list items; never on search hits).
 
 **Concurrency (product-catalog's ADR-0019):**
 - A stale `If-Match` returns **412** with a body like this:
@@ -153,7 +153,7 @@ Design them for a model as the reader:
 - units in the descriptions
 - small outputs
 - an `inputSchema` with the same bounds as catalog-api, so a bad call is rejected before it's sent
-- an `outputSchema` with `structuredContent`, plus a short text summary
+- an `outputSchema` with `structuredContent`, plus a text block: a one-line summary, then the same JSON (ADR-0005)
 
 Add tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) where the SDK supports them.
 
@@ -163,7 +163,7 @@ Add tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 | `get_product` | read | `GET /products/:id` | The full product, including `description` and **`version`**. The description says: "read this before changing a product". |
 | `list_facets` | read | search with `size=1` and facets | Categories, brands and price buckets with counts, optionally filtered. Lets the agent discover valid filter values. |
 | `create_product` | write | `POST /products` | All fields are validated. A 409 becomes `SKU_EXISTS`. **Never retried automatically** (see §4.4). |
-| `set_price` | write | `PATCH {priceCents}` with `If-Match` | **`expectedVersion` is required** in the tool, even though the API makes it optional. Supports `dryRun`. |
+| `set_price` | write | `PATCH {priceCents}` with `If-Match` | **`expectedVersion` is required** in the tool, even though the API makes it optional. **`dryRun` is required too**: `true` previews, `false` writes (ADR-0006). |
 | `set_stock` | write | `PATCH {stock}` with `If-Match` | Same as `set_price`. Absolute value only, no deltas. |
 
 - **Money:** cents in the inputs and outputs, with the format spelled out in the description, e.g. "79900 = 799.00 EGP". Outputs also include a formatted string. Cheap models get cents wrong, and the evals will show whether this helps.
@@ -174,6 +174,7 @@ Add tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 ### 4.3 Errors the agent can recover from
 - **Report tool-execution errors as tool results with `isError: true`,** not as protocol errors, so the model sees them.
 - **Every error has the same structure:** `{ code, message, retryable, hint, details? }`.
+- Error results carry this object as JSON in the text block, with no `structuredContent` (ADR-0005). The one exception: arguments that fail the input schema get the SDK's plain-text error.
 
 | Cause | `code` | `retryable` | `hint` (example) |
 |---|---|---|---|
@@ -201,7 +202,7 @@ Never put the API key, a stack trace or a full upstream body in a tool result.
   - Otherwise, return `STALE_VERSION`.
 
   This is the main reliability point to show. Explain it in an ADR.
-- **`create_product` isn't retried after a timeout,** because there's no lookup by SKU. Return `UNAVAILABLE` with the hint "the product may have been created; search for the sku before retrying".
+- **`create_product` isn't retried after a timeout,** because there's no lookup by SKU. Return `UNAVAILABLE` with a hint to search by name and category, newest first, and to retry only with the same SKU, because search can't find a SKU (ADR-0006 has the wording).
 - **Logs (to stderr):** tool name, duration, upstream status, retry count, and a correlation id per tool call. Never the key.
 
 ### 4.5 Phase 1 tests (free, no LLM)
