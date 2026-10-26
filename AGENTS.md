@@ -24,10 +24,12 @@ Run from the repo root. Test every command before it goes here.
 Node (ADR-0002: TypeScript 7, Vitest 5, oxlint, Prettier; exact pins via `.npmrc`):
 - Install: `npm ci`. Add a package: `npm i <pkg>@<exact version>` (`save-exact` is on; the version comes from the milestone's ADR)
 - Local env: `Copy-Item .env.example .env` (git-ignored; the read key by default)
-- Tests: `npm test` (Vitest, `src/**/*.test.ts`)
+- Unit tests: `npm test` (Vitest project `unit`: `src/**/*.test.ts`, no stack needed)
+- Integration tests: `npm run test:int` (project `int`: `src/**/*.int.test.ts`, one file at a time, about 1 minute). Needs the Compose stack up. Each file creates its own products in category `it-<runid>-<suite>` and deletes them with the admin key; nothing touches `SEED-*`. `pause.int.test.ts` pauses search-service for a few seconds; if a run is killed mid-test, undo it with `docker compose unpause search-service`. search-service shows `unhealthy` for a few seconds after a pause, then recovers
+- A normal write takes about 1 s (search-service indexes with `refresh=wait_for`), a read a few ms. Keep test client timeouts well clear of 1 s
 - Typecheck / lint / format: `npm run typecheck` / `npm run lint` (type-aware; fails on `console.log`/`info`/`debug` in `src/`) / `npm run format:check` (`npm run format` fixes; `*.md` is formatted by hand)
 - Build to `dist/`: `npm run build`
-- CI (`.github/workflows/ci.yml`) runs `npm ci`, lint, typecheck, format check, test and build. Until the repo is on GitHub (M4), run those locally
+- CI (`.github/workflows/ci.yml`): job `check` runs `npm ci`, lint, typecheck, format check, unit tests and build; job `integration` builds the Compose stack from `v1.1.0` and runs `npm run test:int`. Until the repo is on GitHub (M4), run those locally
 
 The catalogue stack (`docker-compose.yml`, project `catalog-agent`, catalog-api `v1.1.0` built from product-catalog's git tag; ADR-0003):
 - First start, or after changing the tag: `docker compose up --build -d --wait`. It clones the tag (needs the network) and takes about 3 minutes, plus the 1.2 GB OpenSearch image if it isn't pulled yet

@@ -1,6 +1,8 @@
 # Free checks on every push and pull request (REQUIREMENTS.md §6). No secrets.
-# The integration job (the Compose stack from v1.1.0) arrives in M1, and the
-# real-model evals (manual only) in M7.
+# check: lint, types, unit tests, build. integration: the Compose stack built
+# from catalog-api v1.1.0, and the *.int.test.ts files against it. Whether
+# integration stays on every pull request is decided at M4, once its run time
+# on GitHub is known. The real-model evals (manual only) arrive in M7.
 name: CI
 
 # push is limited to main and tags, so a pull request from a branch in this
@@ -36,3 +38,23 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+
+  integration:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # OpenSearch's documented minimum for Docker hosts.
+      - run: sudo sysctl -w vm.max_map_count=262144
+      - run: docker compose up --build -d --wait
+      - run: npm run test:int
+      - if: failure()
+        run: docker compose ps -a && docker compose logs --no-color --tail 200
