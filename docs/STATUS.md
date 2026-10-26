@@ -3,59 +3,83 @@
 > Edit rules: the AI rewrites **Now** whenever the next step changes. The **Checklist** is tick-only: change `[ ]` to `[x]` and append `· date · commit · note link`. Never reword, reorder or delete items without asking.
 
 ## Now
-- **Current:** M2 MCP server, read tools (§4.1, §4.2's read tools, §4.5 MCP-level tests, §4.6, the M2 row of §7). Not started; no plan yet.
-- **Last session:** 2026-10-26. Closed M0 ([note](milestones/2026-10-26-M0-scaffold.md)) and M1 ([note](milestones/2026-10-26-M1-catalog-client.md)). M1 built `CatalogClient` (`src/catalog/`), the only path to catalog-api: timeouts, read retries with full-jitter backoff, and conditional writes confirmed after a timeout (ADR-0004, accepted). Plus the stderr JSON logger, a test-only fault proxy, 116 unit and 20 integration tests, and a CI integration job. **Running:** the `catalog-agent` Compose stack on :3100, seeded (10,000 products). The user asked to compact after the M1 close.
-- **Next step: start M2,** following the milestone flow in `AGENTS.md`:
-  1. **Check the official docs first.** Most MCP tutorials are for SDK v1, and we use v2 (ADR-0002). Start at https://ts.sdk.modelcontextprotocol.io/v2/:
-     - `registerTool` with Zod 4 `inputSchema`/`outputSchema`, `structuredContent` and tool annotations (`readOnlyHint` and so on)
-     - `serveStdio(() => createServer())` (it serves 2025-era and 2026-07-28 clients)
-     - `InMemoryTransport` for MCP-level tests (one package per linked pair)
-     - how the 2026-07-28 revision encodes structured results
-     - the SDK's request timeout
-     - check `npm view` for newer 2.x versions
-  2. **Install the pins from ADR-0002:** `@modelcontextprotocol/server@2.4.0`, `@modelcontextprotocol/client@2.4.0` (tests), `zod@4.6.7`, unless step 1 finds a reason to move (then a superseding ADR).
+- **Current:** M3 Write tools (§4.2's write rows, §4.3 and §4.4 through the tools, §4.5's write integration tests, the M3 row of §7). Not started; no plan yet.
+- **Last session:** 2026-10-26. Closed M0, M1 and M2 ([M2 note](milestones/2026-10-26-M2-mcp-read-tools.md)).
+  - **M2 built a stdio MCP server** (`src/main.ts`, `src/mcp/`) with three read tools, `search_products`, `get_product` and `list_facets`, on M1's `CatalogClient`. [ADR-0005](adr/0005-mcp-tool-results-and-errors.md) is accepted.
+  - **Tests:** 210 unit tests (the MCP-level suite in both eras) and 42 integration tests (stdio, tools, `.env`, the contract check).
+  - **Checked live:** it works in MCP Inspector and in Claude Code through `.mcp.json`.
+  - **Running:** the `catalog-agent` Compose stack on :3100, seeded. `.env` exists, a copy of `.env.example` with the read key. The user asked to compact after the M2 close.
+- **Next step: start M3,** following the milestone flow in `AGENTS.md`.
+  1. **Check the official docs first.** SDK v2 at https://ts.sdk.modelcontextprotocol.io/v2/, for write-tool annotations (`destructiveHint`, `idempotentHint`) and anything new since 2.4.0 (`npm view @modelcontextprotocol/server versions`).
+  2. **Read the M2 code first:**
+     - `src/mcp/results.ts`: `errorData` / `toolError` already hold every §4.3 hint, including "the change may have been applied; read the product before retrying"
+     - `src/mcp/tool-call.ts` (`runTool`)
+     - `src/mcp/schemas.ts`
+     - `src/mcp/server.ts`
+     - `src/testing/{mcp,stdio,fixtures}.ts`
   3. **Likely decisions to ask the user:**
-     - how the entry point loads `.env` (`node --env-file-if-exists=.env` in `.mcp.json` / npm scripts, or `process.loadEnvFile`)
-     - the contract check's design: a test reading `/docs-json` from the running catalog-api and comparing the tools' bounds and enums, such as `sort` and `size` ≤ 100
-     - whether the MCP-level tests cover both protocol eras
-     - the shape of `search_products`'s compact hits and its "more pages" hint
-  4. **Write the plan,** `docs/milestones/2026-10-26-M2-plan.md` (or the day's date), with a Review Focus. Build test-first, then a fresh reviewer, then `close-milestone`.
-- **Carried into M2:**
-  - `.mcp.json` registers the server over stdio; it needs `npm run build` first (say so in `AGENTS.md`, later the README)
-  - the first entry point loads `.env`
-  - a stdio test that stdout carries only JSON-RPC: `no-console` misses `process.stdout.write` and aliased consoles
-  - return a successful read's retry count, so the per-tool-call log has it (§4.4)
-  - MCP request timeouts must allow one conditional update's worst case (about 41 s at the default 5 s timeout; ADR-0004)
-  - check §4's tool features against the v2 docs
-  - works in MCP Inspector (2.12.0 uses SDK v2) and in Claude Code
-- **Carried into M3:**
-  - skip or report no-op writes before `updateProduct` (`dryRun`'s `wouldChange`): catalog-api raises the version on a no-op `PATCH`, which weakens the confirm check
-  - never pass `undefined` inside `changes`
-  - build tool results from the error's fields (`code`, `message`, `retryable`, `details`), never the `Error` object
-  - the §4.3 hints, including "the change may have been applied; read the product before retrying" for `details.outcome: 'unknown'`
-  - `CATALOG_ACCESS=read|write` decides which tools are registered
+     - **`CATALOG_ACCESS`:** its default (`read`?), and how `.mcp.json` sets it. `.mcp.json` env would override `.env`, because variables already set win.
+     - **`dryRun`'s output shape:** §4.2 says `{ current, proposed, wouldChange, version }`.
+     - **No-op writes:** catalog-api raises the version even on a `PATCH` that changes nothing, which weakens ADR-0004's confirm check. Refuse them, or report `wouldChange: false` without writing?
+     - **`get_product` as the only source of `expectedVersion`:** list items do carry `version` (§3.2 is outdated there).
+     - **`create_product`'s outcome-unknown hint:** §4.4 wants "the product may have been created; search for the sku before retrying", but `results.ts` gives the generic update hint. Pass a per-tool hint?
+     - **Write annotations:**
+       - `create_product`: `destructiveHint: false`, `idempotentHint: false`
+       - `set_price` / `set_stock`: `idempotentHint: true`? Re-sending the same `expectedVersion` gets a 412, so the write is idempotent in effect.
+  4. **Write the plan,** `docs/milestones/<date>-M3-plan.md`, with a Review Focus. Then build test-first, run a fresh reviewer (give it the uncommitted diff and the plan, and tell it **to mutate only a temp copy, with absolute paths**), then `close-milestone`.
+- **Carried into M3** (from the M1 and M2 notes):
+  - **The tools:** `create_product`, `set_price` and `set_stock`. `expectedVersion` is required, and so is `dryRun`; prices and stock are absolute values only; a 409 is `SKU_EXISTS`; creates are never retried.
+  - **`CATALOG_ACCESS=read|write` decides which tools are registered.** With `read`, the write tools don't exist at all (a unit test). The API enforces the key's scope anyway; document both layers.
+  - **Skip or report no-op writes** before `updateProduct`.
+  - **Never pass `undefined` inside `changes`.**
+  - **Error results** are text only, built from the error's fields (ADR-0005).
+  - **§4.5's integration tests through the real stdio server:**
+    - get, then `set_stock`: version +1
+    - a planted concurrent update gives `STALE_VERSION` with the current version
+    - `dryRun` writes nothing
+    - `CATALOG_ACCESS=write` with the read key gets the API's 403
+    - a duplicate SKU gives `SKU_EXISTS`
+    - every §4.3 row that can be caused
+  - **MCP request timeouts** must allow one conditional update's worst case: about 41 s at the default 5 s timeout. The SDK client's default is 60 s. Inspector waited through 15 s; check it, and Claude Code (whose `MCP_TOOL_TIMEOUT` default is about 28 h), with a slow write.
 - **Carried into M4:**
-  - CI green on GitHub at the first push; check the `integration` job's run time and decide whether it stays on every pull request (§6)
-  - install gitleaks; the MIT `LICENSE`. The user creates the GitHub repo after their go-ahead
-  - README "what I'd change in production": a remote MCP server over Streamable HTTP with OAuth 2.1 (resource server, audience checks, token exchange, no token passthrough), as walked through with the user on 2026-10-26; read the 2026-07-28 spec's authorization section first
-  - idempotency keys or SKU lookup for create
+  - CI green on GitHub at the first push; check the `integration` job's run time, which now includes stdio and `.env` tests that build `dist/` and use a `node_modules` junction or symlink
+  - gitleaks and the MIT `LICENSE`
+  - **the README:**
+    - who did what, and the AI's mistakes (from the milestone notes)
+    - the §4.6 demo (a Claude Code transcript), and the `.env` step before Claude Code
+    - "what I'd change in production": Streamable HTTP with OAuth 2.1 (as walked through on 2026-10-26; read the 2026-07-28 authorization section first), idempotency keys or a SKU lookup for create, and an error schema once the spec has one (SEP-2145)
+  - the user creates the GitHub repo after their go-ahead
+- **Carried into M6:** log the calls the SDK rejects before our handler (schema errors, unknown tools). Today they get no `tool call` line.
 - **Later:** a sweep command for `it-*` products left by a killed integration run.
-- **Facts worth remembering** (in ADR-0004 and `AGENTS.md`):
-  - a catalog-api write takes about 1 s (search-service's `refresh=wait_for`), a read a few ms
-  - a `PATCH` commits before its Redis and index calls (its answer can come up to about 3 s later)
-  - a paused search-service makes a real "committed, answered late" write
-  - keep test client timeouts well clear of 1 s
-- **Outdated in `REQUIREMENTS.md` (found 2026-10-26):**
-  - The MCP spec is now revision 2026-07-28 (stateless), and the official TypeScript SDK is v2, split into `@modelcontextprotocol/server` and `/client` (ADR-0002). §4 and §5 still read correctly at the level of tools, `structuredContent` and annotations; check each against the v2 docs in M2 and M3.
-  - §3.2: list items from `GET /products` **do** carry `version` (checked live; the list ETag is weak, as the spec says). Decide in M2/M3 whether `get_product` stays the only source of `expectedVersion`.
-- **Session gotchas:** commit with `git commit -F <file>`; edit files with the Edit/Write tools only, never heredocs or inline Python replacements (an M1 replacement silently missed a Prettier-formatted file); run `npm run typecheck` after every change (Vitest doesn't typecheck); check lint by its exit code.
+- **Facts worth remembering:**
+  - **catalog-api:**
+    - a write takes about 1 s, a read a few ms
+    - a `PATCH` commits before its Redis and index calls, so its answer can come up to about 3 s later
+    - filters are case-sensitive; `relevance` without `q` is `newest`
+    - facets are the top 20 categories and the top 50 brands
+  - **The SDK:**
+    - it drops in-flight requests when stdin reaches end-of-file
+    - `StdioClientTransport` tolerates junk on stdout (only the raw-pipe test catches it)
+    - Inspector validates `structuredContent` even on `isError`
+  - **Claude Code** starts project servers in the repo folder.
+  - **Tests:** keep test client timeouts well clear of 1 s.
+- **Outdated in `REQUIREMENTS.md`:**
+  - **the MCP spec** is revision 2026-07-28 and the SDK is v2 (ADR-0002)
+  - **§3.2:** list items carry `version`
+  - **§4.2:** "a short text summary" is now a summary plus the JSON (ADR-0005)
+  - **§4.3:** error results are text only, and the SDK's schema rejections are plain text (ADR-0005)
+- **Session gotchas:**
+  - commit with `git commit -F <file>`
+  - edit files with the Edit/Write tools only: no heredocs, no inline Python, no .NET `WriteAllText` (an M2 mutation done that way lost its output)
+  - run `npm run typecheck` after every change; check lint by its exit code
+  - if `npm run test:int` says "The build failed", fix the tsc errors it printed
 - **Open questions / blockers:** none.
 
 ## Checklist
 ### Phase 1: the MCP server (§4)
 - [x] M0 Scaffold · 2026-10-26 · 006e630..f548fd0 · [note](milestones/2026-10-26-M0-scaffold.md)
 - [x] M1 Catalog client · 2026-10-26 · d1055ae..15bbe9f · [note](milestones/2026-10-26-M1-catalog-client.md)
-- [ ] M2 MCP server, read tools
+- [x] M2 MCP server, read tools · 2026-10-26 · d2a2a68..63b32eb · [note](milestones/2026-10-26-M2-mcp-read-tools.md)
 - [ ] M3 Write tools
 - [ ] M4 Phase 1 release
 
