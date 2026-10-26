@@ -24,6 +24,26 @@ describe('fromResponse (REQUIREMENTS.md §4.3)', () => {
     });
   });
 
+  it('replaces the given secrets in the message, wherever they appear (review I1)', () => {
+    const key = 'dev-read-key-not-secret-0000000000000000';
+    const err = fromResponse(
+      400,
+      body(400, [`bad header: Bearer ${key}`, `${key} again`]),
+      { op: 'get', secrets: [key] },
+    );
+    expect(err.message).toBe('bad header: Bearer [redacted]; [redacted] again');
+  });
+
+  it('replaces a secret before cutting the message, so no part of it survives the cut', () => {
+    const key = 'dev-read-key-not-secret-0000000000000000';
+    const err = fromResponse(400, body(400, `${'x'.repeat(480)}${key}`), {
+      op: 'get',
+      secrets: [key],
+    });
+    expect(err.message).not.toContain(key.slice(0, 10));
+    expect(err.message.length).toBeLessThanOrEqual(500);
+  });
+
   it('401: UNAUTHORIZED', () => {
     const err = fromResponse(
       401,

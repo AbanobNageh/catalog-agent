@@ -469,6 +469,49 @@ describe('CatalogClient conditional update: confirm after a timeout', () => {
   });
 });
 
+// The tool layer passes one stats object per tool call and logs it (§4.4: the
+// retry count). A successful read's retries are otherwise lost.
+describe('CatalogClient call stats', () => {
+  const fresh = () => ({ requests: 0, retries: 0 });
+  const ours = product({ stock: 23, version: 2 });
+
+  it('a read that succeeds after 2 retries counts 3 requests and 2 retries', async () => {
+    const stats = fresh();
+    const f = scriptedFetch(timeout(), json(503, {}), json(200, product()));
+    await client(f.fetch).getProduct(ID, { stats });
+    expect(stats).toEqual({ requests: 3, retries: 2 });
+  });
+
+  it('a failed read fills the stats too', async () => {
+    const stats = fresh();
+    const f = scriptedFetch(timeout(), timeout(), timeout());
+    await rejection(client(f.fetch).search({}, { stats }));
+    expect(stats).toEqual({ requests: 3, retries: 2 });
+  });
+
+  it('a non-retried failure counts one request', async () => {
+    const stats = fresh();
+    const f = scriptedFetch(json(404, { message: 'not found' }));
+    await rejection(client(f.fetch).getProduct(ID, { stats }));
+    expect(stats).toEqual({ requests: 1, retries: 0 });
+  });
+
+  it("an update's re-read and retry are counted", async () => {
+    const stats = fresh();
+    const f = scriptedFetch(timeout(), json(200, product()), json(200, ours));
+    await client(f.fetch).updateProduct(ID, { stock: 23 }, 1, { stats });
+    // PATCH (timeout), GET (re-read), PATCH (retry 1)
+    expect(stats).toEqual({ requests: 3, retries: 1 });
+  });
+
+  it('the stats object is not written into the log lines', async () => {
+    const lines: string[] = [];
+    const f = scriptedFetch(json(200, product()));
+    await client(f.fetch, lines).getProduct(ID, { stats: fresh() });
+    expect(lines.join('')).not.toContain('"stats"');
+  });
+});
+
 describe('CatalogClient with real fetch', () => {
   let server: Server | undefined;
   afterEach(() => {

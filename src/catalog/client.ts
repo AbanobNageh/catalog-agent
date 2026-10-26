@@ -32,6 +32,23 @@ export interface CatalogClientOptions {
 export interface CallContext {
   tool?: string;
   correlationId?: string;
+  /** Filled in as requests are sent, so the tool's own log line can report them. */
+  stats?: CallStats;
+}
+
+/** Counts for one tool call, across every request it made (§4.4: the retry count). */
+export interface CallStats {
+  /** HTTP requests sent, retries and re-reads included. */
+  requests: number;
+  /** Requests that were a retry of an earlier one (read retries, the PATCH retry). */
+  retries: number;
+}
+
+/** A call context with its defaults filled in. Only `tool` and `correlationId` are logged. */
+interface Context {
+  tool: string;
+  correlationId: string;
+  stats?: CallStats;
 }
 
 export interface UpdateResult {
@@ -135,7 +152,8 @@ export class CatalogClient {
       });
     const done = (product: Product, confirmedAfterTimeout: boolean) => {
       this.logger.info('conditional update', {
-        ...context,
+        tool: context.tool,
+        correlationId: context.correlationId,
         id,
         attempts,
         confirmedAfterTimeout,
@@ -183,7 +201,7 @@ export class CatalogClient {
     id: string,
     changes: ProductChanges,
     expectedVersion: number,
-    context: Required<CallContext>,
+    context: Context,
   ): Promise<Reread> {
     let product: Product;
     try {
@@ -212,7 +230,7 @@ export class CatalogClient {
   private async read<T>(
     op: CatalogOp,
     path: string,
-    context: Required<CallContext>,
+    context: Context,
   ): Promise<T> {
     const { value } = await withReadRetries(
       (retry) => this.send<T>(op, 'GET', path, context, { retry }),
@@ -233,7 +251,7 @@ export class CatalogClient {
     op: CatalogOp,
     method: 'GET' | 'POST' | 'PATCH',
     path: string,
-    context: Required<CallContext>,
+    context: Context,
     {
       body,
       ifMatch,
@@ -247,10 +265,15 @@ export class CatalogClient {
     if (body !== undefined) headers['content-type'] = 'application/json';
     if (ifMatch !== undefined) headers['if-match'] = `"${ifMatch}"`;
 
+    if (context.stats) {
+      context.stats.requests++;
+      if (retry > 0) context.stats.retries++;
+    }
     const started = this.clock.now();
     const log = (fields: Record<string, unknown>) =>
       this.logger.info('catalog request', {
-        ...context,
+        tool: context.tool,
+        correlationId: context.correlationId,
         op,
         method,
         path: path.split('?')[0],
@@ -278,7 +301,10 @@ export class CatalogClient {
     }
 
     if (status < 200 || status > 299) {
-      const error = fromResponse(status, text, { op });
+      const error = fromResponse(status, text, {
+        op,
+        secrets: [this.options.apiKey],
+      });
       log({ status, code: error.code });
       throw error;
     }
@@ -299,10 +325,11 @@ export class CatalogClient {
     }
   }
 
-  private context(ctx: CallContext = {}): Required<CallContext> {
+  private context(ctx: CallContext = {}): Context {
     return {
       tool: ctx.tool ?? 'none',
       correlationId: ctx.correlationId ?? randomUUID(),
+      ...(ctx.stats ? { stats: ctx.stats } : {}),
     };
   }
 }

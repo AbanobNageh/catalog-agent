@@ -1,4 +1,4 @@
-/** The error codes an agent sees (REQUIREMENTS.md §4.3). The hints are added by the tools (M3). */
+/** The error codes an agent sees (REQUIREMENTS.md §4.3). The hints are added by src/mcp/results.ts. */
 export type CatalogErrorCode =
   | 'VALIDATION'
   | 'UNAUTHORIZED'
@@ -43,14 +43,23 @@ export class CatalogError extends Error {
 
 const MAX_MESSAGE_LENGTH = 500;
 
-/** Classifies a non-2xx response from catalog-api. */
+/**
+ * Classifies a non-2xx response from catalog-api. `secrets` (the client's
+ * key) are replaced in the message: the message is copied from the body into
+ * tool results, and whatever answers at CATALOG_API_URL (a gateway, a wrong
+ * URL) could echo the Authorization header back.
+ */
 export function fromResponse(
   status: number,
   bodyText: string,
-  { op }: { op: CatalogOp },
+  { op, secrets = [] }: { op: CatalogOp; secrets?: readonly string[] },
 ): CatalogError {
   const body = parseBody(bodyText);
-  const message = apiMessage(body) ?? `catalog-api returned ${status}`;
+  // Redacted before the cut, so a secret straddling it can't leave a prefix.
+  const message = redact(
+    apiMessage(body) ?? `catalog-api returned ${status}`,
+    secrets,
+  ).slice(0, MAX_MESSAGE_LENGTH);
   const error = (
     code: CatalogErrorCode,
     retryable = false,
@@ -122,6 +131,13 @@ export function fromNetworkError(err: unknown): CatalogError {
   throw err;
 }
 
+function redact(text: string, secrets: readonly string[]): string {
+  return secrets.reduce(
+    (out, secret) => (secret ? out.replaceAll(secret, '[redacted]') : out),
+    text,
+  );
+}
+
 function parseBody(text: string): Record<string, unknown> | undefined {
   try {
     const parsed: unknown = JSON.parse(text);
@@ -141,5 +157,5 @@ function apiMessage(body: Record<string, unknown> | undefined) {
     : typeof message === 'string'
       ? message
       : undefined;
-  return text ? text.slice(0, MAX_MESSAGE_LENGTH) : undefined;
+  return text || undefined;
 }
