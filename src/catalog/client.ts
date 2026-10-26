@@ -34,6 +34,12 @@ export interface CallContext {
   correlationId?: string;
   /** Filled in as requests are sent, so the tool's own log line can report them. */
   stats?: CallStats;
+  /**
+   * Aborts when the caller gives up (an MCP client's cancellation). Checked
+   * before a write is sent, never used to abort one in flight: a write that
+   * may already be committing is settled by the re-read instead.
+   */
+  signal?: AbortSignal;
 }
 
 /** Counts for one tool call, across every request it made (§4.4: the retry count). */
@@ -49,6 +55,7 @@ interface Context {
   tool: string;
   correlationId: string;
   stats?: CallStats;
+  signal?: AbortSignal;
 }
 
 export interface UpdateResult {
@@ -171,6 +178,16 @@ export class CatalogClient {
 
     const first = await this.reread(id, changes, expectedVersion, context);
     if (first.kind === 'ours') return done(first.product, true);
+    if (context.signal?.aborted) {
+      // The caller gave up: no retry. The first attempt may still land.
+      throw new CatalogError(
+        'UNAVAILABLE',
+        'the call was cancelled before the retry; the first attempt may still apply',
+        true,
+        undefined,
+        { cause: 'cancelled', outcome: 'unknown' },
+      );
+    }
 
     try {
       return done(await patch(), false);
@@ -330,6 +347,7 @@ export class CatalogClient {
       tool: ctx.tool ?? 'none',
       correlationId: ctx.correlationId ?? randomUUID(),
       ...(ctx.stats ? { stats: ctx.stats } : {}),
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
     };
   }
 }
