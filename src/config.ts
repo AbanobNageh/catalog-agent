@@ -3,7 +3,11 @@ export interface CatalogConfig {
   catalogApiUrl: string;
   /** Bearer key for catalog-api. Never log it or put it in a tool result. */
   catalogApiKey: string;
+  /** Per-request timeout for catalog-api calls, body included (ADR-0004). */
+  timeoutMs: number;
 }
+
+const TIMEOUT_MS = { default: 5000, min: 100, max: 60_000 };
 
 /** The Compose stack's catalog-api (REQUIREMENTS.md §2.6). */
 const DEFAULT_CATALOG_API_URL = 'http://localhost:3100';
@@ -51,10 +55,30 @@ export function loadConfig(env: NodeJS.ProcessEnv): CatalogConfig {
     );
   }
 
+  const timeoutMs = wholeNumber(env.CATALOG_TIMEOUT_MS, TIMEOUT_MS.default);
+  if (
+    timeoutMs === undefined ||
+    timeoutMs < TIMEOUT_MS.min ||
+    timeoutMs > TIMEOUT_MS.max
+  ) {
+    errors.push(
+      `CATALOG_TIMEOUT_MS must be a whole number from ${TIMEOUT_MS.min} to ${TIMEOUT_MS.max}`,
+    );
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid configuration:\n- ${errors.join('\n- ')}`);
   }
-  return { catalogApiUrl, catalogApiKey };
+  return { catalogApiUrl, catalogApiKey, timeoutMs: timeoutMs ?? 0 };
+}
+
+/** Digits only (no sign, decimals, exponent or spaces); unset means the default. */
+function wholeNumber(
+  value: string | undefined,
+  fallback: number,
+): number | undefined {
+  if (value === undefined) return fallback;
+  return /^\d{1,9}$/.test(value) ? Number(value) : undefined;
 }
 
 function isHttpUrl(value: string): boolean {

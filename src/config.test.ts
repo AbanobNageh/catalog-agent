@@ -4,12 +4,30 @@ import { loadConfig } from './config.js';
 const KEY = 'dev-read-key-not-secret-0000000000000000';
 
 describe('loadConfig', () => {
-  it('defaults CATALOG_API_URL to the Compose stack on :3100', () => {
+  it('defaults to the Compose stack on :3100 and a 5s timeout', () => {
     expect(loadConfig({ CATALOG_API_KEY: KEY })).toEqual({
       catalogApiUrl: 'http://localhost:3100',
       catalogApiKey: KEY,
+      timeoutMs: 5000,
     });
   });
+
+  it('reads CATALOG_TIMEOUT_MS', () => {
+    const config = loadConfig({
+      CATALOG_API_KEY: KEY,
+      CATALOG_TIMEOUT_MS: '1500',
+    });
+    expect(config.timeoutMs).toBe(1500);
+  });
+
+  it.each(['', 'abc', '99', '60001', '1.5', '1e3', ' 500'])(
+    'rejects CATALOG_TIMEOUT_MS %j',
+    (value) => {
+      expect(() =>
+        loadConfig({ CATALOG_API_KEY: KEY, CATALOG_TIMEOUT_MS: value }),
+      ).toThrow(/CATALOG_TIMEOUT_MS must be a whole number from 100 to 60000/);
+    },
+  );
 
   it('removes trailing slashes from CATALOG_API_URL', () => {
     const config = loadConfig({
