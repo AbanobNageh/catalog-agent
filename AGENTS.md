@@ -29,6 +29,10 @@ Node (ADR-0002: TypeScript 7, Vitest 5, oxlint, Prettier; exact pins via `.npmrc
 - A normal write takes about 1 s (search-service indexes with `refresh=wait_for`), a read a few ms. Keep test client timeouts well clear of 1 s
 - Typecheck / lint / format: `npm run typecheck` / `npm run lint` (type-aware; fails on `console.log`/`info`/`debug` in `src/`) / `npm run format:check` (`npm run format` fixes; `*.md` is formatted by hand)
 - Build to `dist/`: `npm run build`
+- Run the MCP server over stdio: `npm run build`, then `npm start` (`node dist/main.js`). It loads the repo root's `.env` itself, wherever it's started from; variables already set win. It waits for JSON-RPC on stdin and logs JSON to stderr. With stdin piped from a file, the server drops requests still in flight at end-of-file, so the answers never arrive
+- Claude Code: `.mcp.json` registers the server as `catalog` (`node dist/main.js`). **Run `npm run build` first**; Claude Code asks once to approve a project server
+- MCP Inspector, CLI mode, through `.mcp.json`: `npx -y @modelcontextprotocol/inspector@2.12.0 --cli --config .mcp.json --server catalog --method tools/list --strict`. A call: `... --method tools/call --tool-name search_products --tool-arg category=books maxStock=5 sort=stock_asc`. Extra variables: `-e CATALOG_API_KEY=...`. It exits 5 when a tool returns an error result. Leave out `--cli` for the web UI
+- The int project's global setup runs the build, because `stdio.int.test.ts` and `tools.int.test.ts` spawn `dist/main.js`. `contract.int.test.ts` compares the tools' schemas with the live `/docs-json`
 - CI (`.github/workflows/ci.yml`): job `check` runs `npm ci`, lint, typecheck, format check, unit tests and build; job `integration` builds the Compose stack from `v1.1.0` and runs `npm run test:int`. Until the repo is on GitHub (M4), run those locally
 
 The catalogue stack (`docker-compose.yml`, project `catalog-agent`, catalog-api `v1.1.0` built from product-catalog's git tag; ADR-0003):

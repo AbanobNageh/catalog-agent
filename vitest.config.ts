@@ -17,6 +17,8 @@ export default defineConfig({
         test: {
           name: 'int',
           include: ['src/**/*.int.test.ts'],
+          // The stdio tests spawn dist/main.js: build it first.
+          globalSetup: ['src/testing/build.global.ts'],
           fileParallelism: false,
           testTimeout: 30_000,
           hookTimeout: 60_000,
