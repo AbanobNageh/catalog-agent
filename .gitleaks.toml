@@ -1,0 +1,13 @@
+# gitleaks configuration: the default rules, plus one allowlist.
+#
+# The three Compose dev keys for catalog-api (read, write, admin) are public
+# on purpose: they're committed in product-catalog's docker-compose.yml and
+# documented here (REQUIREMENTS.md §3.1, AGENTS.md, .env.example). They only
+# work against a local stack. The allowlist matches those exact strings and
+# nothing else, so any other key is still reported.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public catalog-api Compose dev keys (not secret)"
+regexes = ['''^dev-(read|write|admin)-key-not-secret-0+$''']
