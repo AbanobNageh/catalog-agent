@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "catalog": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["dist/main.js"]
+    }
+  }
+}
