@@ -8,8 +8,8 @@ import { registerSearchProducts } from './tools/search-products.js';
 import { registerSetPrice } from './tools/set-price.js';
 import { registerSetStock } from './tools/set-stock.js';
 
-/** What `tools/list` and the handshake report. Same as package.json; M4 bumps both. */
-export const SERVER_INFO = { name: 'catalog-agent', version: '0.0.0' };
+/** What `tools/list` and the handshake report. Same as package.json; a unit test keeps them equal. */
+export const SERVER_INFO = { name: 'catalog-agent', version: '0.1.0' };
 
 export interface ServerDeps extends ToolDeps {
   /** CATALOG_ACCESS (ADR-0006): `read` registers the read tools only. */

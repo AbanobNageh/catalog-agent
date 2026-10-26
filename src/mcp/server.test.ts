@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Product, SearchHit, SearchResult } from '../catalog/types.js';
+import { SERVER_INFO } from './server.js';
 import {
   call,
   closeAll,
@@ -37,6 +39,14 @@ const hit = (n: number, overrides: Partial<SearchHit> = {}): SearchHit => ({
 });
 
 const product: Product = { ...hit(1, { id: ID }), version: 3 };
+
+// The version a client sees in serverInfo is the released one.
+it('SERVER_INFO matches package.json', () => {
+  const pkg = JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { name: string; version: string };
+  expect(SERVER_INFO).toEqual({ name: pkg.name, version: pkg.version });
+});
 
 const searchResult = (
   hits: SearchHit[],

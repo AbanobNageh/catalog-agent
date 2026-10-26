@@ -35,7 +35,7 @@ describe('stdout carries only JSON-RPC (Review Focus 1)', () => {
     });
     expect(init.result?.serverInfo).toEqual({
       name: 'catalog-agent',
-      version: '0.0.0',
+      version: '0.1.0',
     });
     server.send({ method: 'notifications/initialized' });
 
