@@ -11,10 +11,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint --type-aware src/",
+    "lint": "oxlint --type-aware --deny-warnings src/",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run"
+    "test": "vitest run --project unit",
+    "test:int": "vitest run --project int"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
