@@ -1,0 +1,5 @@
+# Prose is formatted by hand (long lines, tables); Prettier covers code and config.
+*.md
+package-lock.json
+dist/
+coverage/

@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "env": {
+    "node": true
+  },
+  "rules": {
+    // On the stdio transport, stdout is the MCP protocol: one stray line breaks
+    // the connection. console.log/info/debug write to stdout; error and warn
+    // write to stderr. Logs go through the stderr JSON logger.
+    "no-console": ["error", { "allow": ["error", "warn"] }],
+    "typescript/no-floating-promises": "error"
+  }
+}
