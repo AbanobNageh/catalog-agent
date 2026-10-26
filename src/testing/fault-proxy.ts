@@ -11,8 +11,18 @@ import type { AddressInfo } from 'node:net';
  * - 'cutAfterForward': forward, wait for the full upstream response, then
  *   never answer (the write "landed, but the response was lost")
  * - { status }: answer with that status without forwarding
+ * - 'pass': forward as normal, so a later request can be faulted (a set
+ *   tool's first read passes, its PATCH doesn't)
+ * - { before }: run `before`, then forward. A test plants another client's
+ *   write there, so it lands between a set tool's first read and its PATCH,
+ *   and catalog-api's own If-Match answers 412
  */
-export type Fault = 'hang' | 'cutAfterForward' | { status: number };
+export type Fault =
+  | 'pass'
+  | 'hang'
+  | 'cutAfterForward'
+  | { status: number }
+  | { before: () => Promise<unknown> };
 
 export interface FaultProxy {
   /** Point the client here instead of at catalog-api. */
@@ -62,7 +72,9 @@ export async function startFaultProxy(
     const body = await readBody(req);
 
     if (fault === 'hang') return; // keep the socket open, answer nothing
-    if (typeof fault === 'object') {
+    if (typeof fault === 'object' && 'before' in fault) {
+      await fault.before();
+    } else if (typeof fault === 'object') {
       res.writeHead(fault.status, { 'content-type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -121,6 +133,9 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 function describe(fault: Fault | undefined): string {
-  if (fault === undefined) return 'pass';
-  return typeof fault === 'object' ? `status ${fault.status}` : fault;
+  if (fault === undefined || fault === 'pass') return 'pass';
+  if (typeof fault === 'object') {
+    return 'before' in fault ? 'before' : `status ${fault.status}`;
+  }
+  return fault;
 }

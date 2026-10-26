@@ -107,6 +107,30 @@ describe('startFaultProxy', () => {
     ]);
   });
 
+  it("'pass' lets one request through, so a later one can be faulted", async () => {
+    proxy.next('pass', { status: 503 });
+    expect((await call()).status).toBe(201);
+    expect((await call()).status).toBe(503);
+    expect(hits).toBe(1);
+    expect(proxy.log.map((r) => r.fault)).toEqual(['pass', 'status 503']);
+  });
+
+  it("{ before } runs its callback, then forwards: another client's write lands just before ours", async () => {
+    const order: string[] = [];
+    proxy.next({
+      before: async () => {
+        order.push('before');
+        await Promise.resolve();
+      },
+    });
+    const res = await call();
+    order.push('answered');
+    expect(res.status).toBe(201);
+    expect(order).toEqual(['before', 'answered']);
+    expect(hits).toBe(1);
+    expect(proxy.log.map((r) => r.fault)).toEqual(['before']);
+  });
+
   it('an unreachable upstream closes the socket instead of an unhandled rejection', async () => {
     const dead = await startFaultProxy('http://127.0.0.1:1'); // nothing listens
     try {
